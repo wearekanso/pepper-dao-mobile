@@ -68,7 +68,7 @@ export function PowerScreen() {
 
       {profile ? (
         <>
-          <HeatCamera profile={profile} variant={CORE_VARIANT} />
+          <HeatCamera profile={profile} variant={CORE_VARIANT} isGuest={!isConnected} />
           {isConnected ? (
             <>
               <StreakPanel profile={profile} />
@@ -91,7 +91,7 @@ export function PowerScreen() {
   );
 }
 
-function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCoreVariant }) {
+function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: PixelCoreVariant; isGuest: boolean }) {
   const { width } = useWindowDimensions();
   const focusKey = useFocusKey();
   const { preview } = useRankUp();
@@ -154,7 +154,9 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
         <View style={[styles.row, { gap: 8 }]}>
           <HeatPepper level={heat.current} width={18} />
           <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>
-            {`${heat.current.name} · ${getRankLabel(profile.rank)} · HEAT ${heat.current.level}/${MAX_HEAT_LEVEL}`}
+            {isGuest
+              ? `${heat.current.name} · GUEST`
+              : `${heat.current.name} · ${getRankLabel(profile.rank)} · HEAT ${heat.current.level}/${MAX_HEAT_LEVEL}`}
           </Text>
         </View>
       </View>
