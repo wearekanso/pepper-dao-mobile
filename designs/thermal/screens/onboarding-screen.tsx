@@ -38,7 +38,8 @@ interface OnboardingScreenProps {
 export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const { connect } = useWallet();
+  const { connect, isConnected } = useWallet();
+  const [isLinking, setIsLinking] = useState(false);
   const [index, setIndex] = useState(0);
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
@@ -67,11 +68,22 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
   }
 
   /** The wallet step replaces the separate post-onboarding wallet prompt */
-  function finish(linkWallet: boolean) {
+  function finish() {
     StorageService.setBoolean(STORAGE_KEYS.ONBOARDING_DISMISSED, true);
     onComplete();
-    if (linkWallet) void connect();
   }
+
+  // CONNECT WALLET keeps the user here with the wallet picker on top; the app
+  // opens only once a wallet is actually connected (cancelling stays on step 4)
+  function handleConnect() {
+    setIsLinking(true);
+    void connect();
+  }
+
+  useEffect(() => {
+    if (isLinking && isConnected) finish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLinking, isConnected]);
 
   return (
     <View style={styles.root}>
@@ -124,8 +136,8 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
         <View style={{ gap: 12 }}>
           {isLast ? (
             <>
-              <PixelButton label="CONNECT WALLET >" variant="gold" onPress={() => finish(true)} />
-              <PixelButton label="EXPLORE AS GUEST" variant="outline" onPress={() => finish(false)} />
+              <PixelButton label="CONNECT WALLET >" variant="gold" onPress={handleConnect} />
+              <PixelButton label="EXPLORE AS GUEST" variant="outline" onPress={finish} />
             </>
           ) : (
             <PixelButton label="NEXT >" variant="gold" onPress={handleNext} />
