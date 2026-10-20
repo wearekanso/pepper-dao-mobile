@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Fragment } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { useWallet } from '@/contexts/wallet-context';
 import type { GovernanceProposal } from '@/types/governance';
 
 import { formatCountdown, formatShortDate } from '../lib/format';
@@ -39,6 +40,7 @@ export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps)
   const split = getVoteSplit(proposal);
   const isActive = proposal.status === 'ACTIVE';
   const userVote = getUserVote(proposal);
+  const { isConnected, connect } = useWallet();
 
   return (
     <Panel live index={index} onPress={onOpen}>
@@ -58,15 +60,25 @@ export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps)
 
       <DashedDivider />
 
-      <View style={styles.between}>
-        <Text style={[TYPE.label12, { color: INK.muted }]}>
-          {userVote ? `YOU VOTED ${userVote}` : "YOU HAVEN'T VOTED YET"}
-        </Text>
-        <View style={styles.row6}>
-          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{userVote ? 'VIEW' : 'VOTE'}</Text>
-          <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+      {isConnected ? (
+        <View style={styles.between}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>
+            {userVote ? `YOU VOTED ${userVote}` : "YOU HAVEN'T VOTED YET"}
+          </Text>
+          <View style={styles.row6}>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{userVote ? 'VIEW' : 'VOTE'}</Text>
+            <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={styles.between}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>CONNECT A WALLET TO VOTE</Text>
+          <Touchable onPress={() => void connect()} hitSlop={8} style={styles.row6}>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>CONNECT</Text>
+            <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+          </Touchable>
+        </View>
+      )}
     </Panel>
   );
 }

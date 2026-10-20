@@ -11,9 +11,10 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useUser } from '@/contexts/user-context';
+import { useWallet } from '@/contexts/wallet-context';
 import { useActivities } from '@/hooks/use-activities';
 import { RANK_IMAGES } from '@/lib/rank-images';
-import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS } from '@/lib/reputation';
+import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS, REPUTATION_POINTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
 
 import { BlinkDot, DashedDivider } from '../components/atoms';
@@ -34,7 +35,7 @@ import { useCountUp } from '../hooks/use-count-up';
 import { useFocusKey } from '../hooks/use-focus-key';
 import { formatDayMonth, formatInteger } from '../lib/format';
 import { formatShu, getHeatLevel, getHeatProgress, getRankLabel, HEAT_LEVELS, MAX_HEAT_LEVEL } from '../lib/heat-levels';
-import { INK, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
+import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * POWER — your heat signature: the camera locks onto your rank art, the
@@ -44,6 +45,7 @@ export function PowerScreen() {
   const { profile, isLoading } = useUser();
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const [isHowToOpen, setIsHowToOpen] = useState(false);
+  const { isConnected, connect } = useWallet();
 
   return (
     <ThermalScreen preset="power">
@@ -67,13 +69,19 @@ export function PowerScreen() {
       {profile ? (
         <>
           <HeatCamera profile={profile} variant={CORE_VARIANT} />
-          <StreakPanel profile={profile} />
-          <NextLevelPanel profile={profile} />
-          <Animated.View style={[styles.row, { gap: 12 }]}>
-            <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
-            <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
-          </Animated.View>
-          <HeatLog profile={profile} />
+          {isConnected ? (
+            <>
+              <StreakPanel profile={profile} />
+              <NextLevelPanel profile={profile} />
+              <Animated.View style={[styles.row, { gap: 12 }]}>
+                <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
+                <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
+              </Animated.View>
+              <HeatLog profile={profile} />
+            </>
+          ) : (
+            <GuestPanel onConnect={() => void connect()} />
+          )}
         </>
       ) : null}
 
@@ -251,6 +259,33 @@ function ScaleCell({ color, delay }: { color: string; delay: number }) {
   const animatedStyle = useAnimatedStyle(() => ({ opacity: 0.1 + lit.value * 0.9 }));
 
   return <Animated.View style={[{ width: 12, height: 7, backgroundColor: color }, animatedStyle]} />;
+}
+
+/** No wallet yet: what linking unlocks, and the first two REP sources */
+function GuestPanel({ onConnect }: { onConnect: () => void }) {
+  return (
+    <Panel index={1}>
+      <Text style={[TYPE.label12, { color: INK.muted }]}>NO HEAT SIGNATURE YET</Text>
+      <Text style={TYPE.body14}>Link a wallet to start building heat. Every vote, stake and proposal earns REP.</Text>
+      <View style={styles.guestList}>
+        {GUEST_STEPS.map((step, index) => (
+          <View key={step.title}>
+            {index > 0 ? <DashedDivider /> : null}
+            <View style={[styles.row, styles.guestRow]}>
+              <View style={styles.guestChip}>
+                <Text style={TYPE.display24}>{`+${step.points}`}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={TYPE.label12}>{step.title}</Text>
+                <Text style={[TYPE.meta18, { color: INK.muted }]}>{step.hint}</Text>
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+      <PixelButton label="CONNECT WALLET >" variant="gold" onPress={onConnect} />
+    </Panel>
+  );
 }
 
 function StreakPanel({ profile }: { profile: Profile }) {
@@ -495,6 +530,11 @@ const CORE_VARIANT: PixelCoreVariant = 'flip';
 /** Done checklist items fade back (Figma: 50% white) */
 const INK_DONE = 'rgba(255,255,255,0.5)';
 
+const GUEST_STEPS = [
+  { title: 'LINK WALLET', hint: `Unlocks MEMBER · ${HEAT_LEVELS.MEMBER.name}`, points: REPUTATION_POINTS.WALLET_CONNECTED },
+  { title: 'FIRST VOTE', hint: 'Any live proposal', points: REPUTATION_POINTS.FIRST_VOTE },
+];
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_WINDOW_MS = 7 * DAY_MS;
 
@@ -528,6 +568,23 @@ const WEEK_COLORS = [
 
 
 const styles = StyleSheet.create({
+  guestList: {
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.border,
+  },
+  guestRow: {
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  guestChip: {
+    width: 52,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.cream,
+  },
   checkBox: {
     width: 14,
     height: 14,

@@ -6,9 +6,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
 import { useUser } from '@/contexts/user-context';
+import { useWallet } from '@/contexts/wallet-context';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import { usePepperTokenMetrics } from '@/hooks/use-pepper-token-metrics';
 import { calculateBurnedFromOriginalSupply, formatPepperAmount } from '@/lib/pepper-metrics';
+import { REPUTATION_POINTS } from '@/lib/reputation';
 import { telemetry } from '@/lib/telemetry';
 
 import { ChevronLink, LiveMarker, SectionLabel } from '../components/atoms';
@@ -257,7 +259,8 @@ interface HeatShortcutProps {
 
 function HeatShortcut({ index, onPress }: HeatShortcutProps) {
   const { profile } = useUser();
-  const heat = profile ? getHeatProgress(profile) : null;
+  const { isConnected } = useWallet();
+  const heat = profile && isConnected ? getHeatProgress(profile) : null;
   const streakWeeks = profile?.current_streak_weeks ?? 0;
 
   return (
@@ -267,10 +270,15 @@ function HeatShortcut({ index, onPress }: HeatShortcutProps) {
         <View style={{ flex: 1 }}>
           <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT</Text>
           <Text style={TYPE.meta18} numberOfLines={1}>
-            {heat ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU` : 'CONNECT TO HEAT UP'}
+            {heat ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU` : 'Start earning heat'}
           </Text>
+          {heat ? null : (
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]} numberOfLines={1}>
+              {`+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link a wallet`}
+            </Text>
+          )}
         </View>
-        {streakWeeks > 0 ? (
+        {heat && streakWeeks > 0 ? (
           <View style={[styles.row, { gap: 4, alignItems: 'center' }]}>
             <PixelArt name="flameSmall" />
             <Text style={[TYPE.meta18, { color: THERMAL_COLORS.orange }]}>{`${streakWeeks}-WEEK STREAK`}</Text>

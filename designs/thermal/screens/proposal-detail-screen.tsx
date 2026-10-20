@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useWallet } from '@/contexts/wallet-context';
 import { useGovernanceProposal } from '@/hooks/use-governance';
 import {
   basisPointsToPercentage,
@@ -350,6 +351,9 @@ interface VoteDockProps {
 }
 
 function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
+  const router = useRouter();
+  const { isConnected, connect } = useWallet();
+  const isGuest = !isConnected && !isDemoProposalId(proposal.id);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isOpen = proposal.status === 'ACTIVE';
@@ -378,6 +382,15 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
         </Defs>
         <Rect x="0" y="0" width={width} height={height} fill="url(#dock-fade)" />
       </Svg>
+      {isGuest ? (
+        <View style={styles.dockBody}>
+          <PixelButton label="CONNECT WALLET TO VOTE >" variant="gold" onPress={() => void connect()} />
+          <View style={styles.between}>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>Votes need staked vePEPPER</Text>
+            <ChevronLink label="HOW?" onPress={() => router.push('/rulebook')} />
+          </View>
+        </View>
+      ) : (
       <View style={styles.dockBody}>
         <View style={[styles.row, { gap: 12 }]}>
           {VOTE_OPTIONS.map((option) => {
@@ -403,6 +416,7 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
           ) : null}
         </View>
       </View>
+      )}
     </Animated.View>
   );
 }
