@@ -4,6 +4,7 @@ import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser'
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
 import { useUser } from '@/contexts/user-context';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import { usePepperTokenMetrics } from '@/hooks/use-pepper-token-metrics';
@@ -57,6 +58,7 @@ export function PulseScreen() {
         icon: ICON_SUPPLY,
         value: metrics ? formatCompact(tokenToNumber(metrics.totalSupply, decimals)) : '–',
         hint: 'total PEPPER',
+        modal: 'supply',
       },
       {
         key: 'burnt',
@@ -64,6 +66,7 @@ export function PulseScreen() {
         icon: ICON_BURN,
         value: burned !== null ? formatCompact(burned) : '–',
         hint: 'burned for good',
+        modal: 'burnt',
       },
       {
         key: 'staked',
@@ -206,6 +209,20 @@ export function PulseScreen() {
         address={TREASURY_ADDRESS}
       />
       <InfoSheet
+        visible={modal === 'supply'}
+        onClose={() => setModal(null)}
+        title="TOTAL SUPPLY"
+        message="All PEPPER that exists right now. Supply started at 8,888,888,888,000,000 and only goes down as tokens are burned."
+        address={PEPPER_TOKEN_ADDRESS}
+      />
+      <InfoSheet
+        visible={modal === 'burnt'}
+        onClose={() => setModal(null)}
+        title="BURNT PEPPER"
+        message="PEPPER removed from circulation for good: the gap between the original 8.888Q supply and what exists today. Burned tokens never come back."
+        address={PEPPER_TOKEN_ADDRESS}
+      />
+      <InfoSheet
         visible={modal === 'staked'}
         onClose={() => setModal(null)}
         title="STAKED PEPPER"
@@ -267,7 +284,7 @@ function formatDelta(delta: bigint | null): string {
   return `${sign}${formatPepperAmount(absolute, 18)} CHZ TODAY`;
 }
 
-type ModalKey = 'treasury' | 'treasuryInfo' | 'staked' | 'cex';
+type ModalKey = 'treasury' | 'treasuryInfo' | 'supply' | 'burnt' | 'staked' | 'cex';
 
 interface Readout {
   key: string;
