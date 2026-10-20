@@ -6,8 +6,7 @@ import { useVoting } from '@/hooks/use-voting';
 import type { GovernanceProposal, VoteOption } from '@/types/governance';
 
 import { castDemoVote, DEMO_VOTING_POWER, isDemoProposalId } from '../lib/demo-vote';
-import { shortenKey } from '../lib/format';
-import { getProposalTitle } from '../lib/proposal';
+import { getProposalLabel, getProposalTitle } from '../lib/proposal';
 import { INK, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 import { DashedDivider, Touchable } from './atoms';
 import { HardShadow } from './panel';
@@ -74,7 +73,7 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
       }
     >
       <View style={{ gap: 4 }}>
-        <Text style={[TYPE.label12, { color: INK.muted }]}>{`COMMUNITY VOTE · ${shortenKey(proposal.key)}`}</Text>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>{getProposalLabel(proposal)}</Text>
         <Text style={TYPE.display24}>{getProposalTitle(proposal)}</Text>
       </View>
 

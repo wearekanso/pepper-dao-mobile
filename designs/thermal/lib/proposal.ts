@@ -4,6 +4,7 @@ import type { GovernanceProposal, GovernanceStatus, VoteOption } from '@/types/g
 
 import { THERMAL_COLORS } from '../theme';
 import { parseDateMs } from './format';
+import type { StatusKind } from '../components/atoms';
 import type { VoteSplit } from '../components/pixel-bar';
 
 export interface StatusStyle {
@@ -42,9 +43,22 @@ export function isLiveProposal(proposal: GovernanceProposal): boolean {
   return proposal.status === 'ACTIVE' || proposal.status === 'PENDING';
 }
 
-/** Which body votes on it: "COMMUNITY VOTE", "COUNCIL VOTE" … */
-export function getProposalKind(proposal: GovernanceProposal): string {
-  return PROPOSAL_KIND[proposal.type];
+/**
+ * V2 status tag per proposal status (stroke + text, see STATUS_COLORS).
+ * Live proposals show the LIVE marker instead of a tag.
+ */
+export const STATUS_TAGS: Record<GovernanceStatus, { label: string; kind: StatusKind }> = {
+  ACTIVE: { label: 'LIVE', kind: 'live' },
+  PENDING: { label: 'UPCOMING', kind: 'upcoming' },
+  SUCCEEDED: { label: 'PASSED', kind: 'positive' },
+  EXECUTED: { label: 'EXECUTED', kind: 'positive' },
+  REJECTED: { label: 'REJECTED', kind: 'negative' },
+};
+
+/** Who votes + its number: "COMMUNITY VOTE · #1", "COUNCIL · #2", "COUNCIL · MULTISIG" */
+export function getProposalLabel(proposal: GovernanceProposal): string {
+  const index = /^[A-Z]+-(\d{1,6})$/.exec(proposal.key)?.[1];
+  return `${PROPOSAL_KIND[proposal.type]} · ${index !== undefined ? `#${index}` : proposal.type}`;
 }
 
 /** The connected wallet's recorded vote, if any */
@@ -66,8 +80,8 @@ export function formatVoteSummary(split: VoteSplit): string {
 
 const PROPOSAL_KIND: Record<GovernanceProposal['type'], string> = {
   PEP: 'COMMUNITY VOTE',
-  MULTISIG: 'COUNCIL VOTE',
-  ADMIN: 'ADMIN ACTION',
+  MULTISIG: 'COUNCIL',
+  ADMIN: 'COUNCIL',
   OTHER: 'PROPOSAL',
 };
 
@@ -87,6 +101,13 @@ export function getTrackShort(proposal: GovernanceProposal): string {
   return TRACK_SHORT[getTrack(proposal)];
 }
 
+/** "AGILE · 3 DAYS" */
+export function getTrackLabel(proposal: GovernanceProposal): string {
+  const track = getTrack(proposal);
+  if (track === 'CUSTOM') return 'CUSTOM';
+  return `${track} · ${VOTING_TRACK_DURATION_LABELS[track].toUpperCase()}`;
+}
+
 export function getTrackLong(proposal: GovernanceProposal): string {
   const track = getTrack(proposal);
   if (track === 'CUSTOM') return 'CUSTOM TRACK';
@@ -97,6 +118,8 @@ export type StageState = 'done' | 'live' | 'waiting' | 'failed';
 
 export interface ProposalStage {
   label: string;
+  /** Compact form for one-line stage strips: "MINISTERS 3/3", "VOTE · LIVE", "EXECUTE" */
+  short: string;
   detail: string;
   state: StageState;
 }
@@ -114,14 +137,15 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
 
   if (proposal.type === 'ADMIN') {
     return [
-      { label: 'ADMIN ACTION', detail: 'AUTO-APPROVED', state: 'done' },
-      { label: 'EXECUTION ON-CHAIN', detail: isExecuted ? 'DONE' : 'QUEUED', state: isExecuted ? 'done' : 'live' },
+      { label: 'ADMIN ACTION', short: 'ADMIN', detail: 'AUTO-APPROVED', state: 'done' },
+      { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', detail: isExecuted ? 'DONE' : 'QUEUED', state: isExecuted ? 'done' : 'live' },
     ];
   }
 
   const ministersState: StageState = ministersPassed ? 'done' : isRejected ? 'failed' : 'live';
   const ministers: ProposalStage = {
     label: 'SPICY MINISTERS',
+    short: `MINISTERS ${approvals}/${minApprovals}`,
     detail: `${approvals}/${minApprovals} APPROVED`,
     state: ministersState,
   };
@@ -129,7 +153,7 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
   if (proposal.type !== 'PEP') {
     return [
       ministers,
-      { label: 'EXECUTION ON-CHAIN', detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
+      { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
     ];
   }
 
@@ -144,28 +168,30 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
     ministers,
     {
       label: 'COMMUNITY VOTE',
+      short: communityState === 'live' ? 'VOTE · LIVE' : 'VOTE',
       detail: communityState === 'live' ? 'LIVE' : communityState === 'done' ? 'PASSED' : communityState === 'failed' ? 'FAILED' : '',
       state: communityState,
     },
-    { label: 'EXECUTION ON-CHAIN', detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
+    { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
   ];
 }
 
-/** One-line reason under ended proposals, e.g. "Stage 1 not reached · 1/3 ministers" */
+/** One-line reason under ended proposals, e.g. "Not enough minister approvals · 1/3" */
 export function getEndedNote(proposal: GovernanceProposal): string | null {
   if (proposal.status !== 'REJECTED') return null;
 
   const approvals = proposal.approvals ?? 0;
   const minApprovals = proposal.minApprovals ?? 0;
   if (approvals < minApprovals) {
-    return `Stage 1 not reached · ${approvals}/${minApprovals} ministers`;
+    const approvers = proposal.type === 'PEP' ? 'minister' : 'council';
+    return `Not enough ${approvers} approvals · ${approvals}/${minApprovals}`;
   }
   return 'Community vote did not pass';
 }
 
 export const STAGE_COLORS: Record<StageState, string> = {
   done: THERMAL_COLORS.cream,
-  live: THERMAL_COLORS.orange,
+  live: THERMAL_COLORS.white,
   waiting: 'rgba(255,255,255,0.25)',
-  failed: THERMAL_COLORS.blue,
+  failed: THERMAL_COLORS.red,
 };

@@ -4,22 +4,22 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import type { GovernanceProposal } from '@/types/governance';
 
-import { formatAgo, formatCountdown, shortenKey } from '../lib/format';
+import { formatCountdown, formatShortDate } from '../lib/format';
 import {
   formatVoteSummary,
   getEndedNote,
-  getProposalKind,
   getProposalDescription,
-  getProposalTitle,
+  getProposalLabel,
   getProposalStages,
-  getTrackShort,
+  getProposalTitle,
+  getTrackLabel,
   getUserVote,
   getVoteSplit,
   STAGE_COLORS,
-  STATUS_STYLES,
+  STATUS_TAGS,
 } from '../lib/proposal';
 import { INK, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
-import { DashedDivider, Tag, Touchable } from './atoms';
+import { DashedDivider, StatusTag, Tag, Touchable } from './atoms';
 import { Panel } from './panel';
 import { getVoteBarColors, PixelBar } from './pixel-bar';
 import { PixelButton } from './pixel-button';
@@ -39,18 +39,15 @@ export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps)
   const split = getVoteSplit(proposal);
   const isActive = proposal.status === 'ACTIVE';
   const userVote = getUserVote(proposal);
-  const timing = isActive
-    ? `${formatCountdown(proposal.endDate)} LEFT`
-    : `OPENS IN ${formatCountdown(proposal.startDate)}`;
 
   return (
     <Panel live index={index} onPress={onOpen}>
       <View style={{ gap: 4 }}>
         <View style={styles.between}>
           <Text style={[TYPE.label12, { color: INK_KIND, flexShrink: 1 }]} numberOfLines={1}>
-            {`${getProposalKind(proposal)} · ${shortenKey(proposal.key)}`}
+            {getProposalLabel(proposal)}
           </Text>
-          <Text style={[TYPE.meta18, { color: INK.body }]}>{timing}</Text>
+          <Text style={[TYPE.meta18, { color: INK.body }]}>{getTiming(proposal)}</Text>
         </View>
         <Text style={TYPE.display24}>{getProposalTitle(proposal)}</Text>
       </View>
@@ -76,87 +73,67 @@ export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps)
 
 interface LiveProposalPanelProps {
   proposal: GovernanceProposal;
-  variant: 'compact' | 'full';
   index?: number;
   onOpen: () => void;
 }
 
 /**
- * Live proposal readout. Compact on Pulse, full (with stages, legend and
- * CTA) on Decide. The orange frame pulses towards gold while voting is open.
+ * V2 live proposal card (Decide): track tag + time left, kind, title,
+ * description, stage strip, vote bar with legend and the vote CTA.
  */
-export function LiveProposalPanel({ proposal, variant, index = 0, onOpen }: LiveProposalPanelProps) {
-  const status = STATUS_STYLES[proposal.status];
+export function LiveProposalPanel({ proposal, index = 0, onOpen }: LiveProposalPanelProps) {
   const split = getVoteSplit(proposal);
   const isActive = proposal.status === 'ACTIVE';
-  const isFull = variant === 'full';
-  const timing = isActive
-    ? `ENDS IN ${formatCountdown(proposal.endDate)}`
-    : proposal.status === 'PENDING'
-      ? `STARTS IN ${formatCountdown(proposal.startDate)}`
-      : formatAgo(proposal.endDate);
+  const description = getProposalDescription(proposal);
+  const userVote = getUserVote(proposal);
 
   return (
-    <Panel borderColor={THERMAL_COLORS.orange} glow={isActive} index={index} onPress={isFull ? undefined : onOpen}>
+    <Panel live index={index}>
       <View style={styles.between}>
-        <View style={styles.row6}>
-          <Tag label={status.label} color={status.color} textColor={status.textColor} />
-          {isFull ? <Tag label={getTrackShort(proposal)} color="rgba(255,255,255,0.6)" variant="outline" /> : null}
-        </View>
-        <Text style={[TYPE.meta16, { color: THERMAL_COLORS.orange }]}>{timing}</Text>
+        <Tag label={getTrackLabel(proposal)} color={INK.muted} variant="outline" />
+        <Text style={[TYPE.meta18, { color: INK.body }]}>{getTiming(proposal)}</Text>
       </View>
 
-      <View style={{ gap: isFull ? 3 : 2 }}>
-        <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold }]}>{shortenKey(proposal.key)}</Text>
+      <View style={{ gap: 3 }}>
+        <Text style={[TYPE.label12, { color: INK_KIND }]}>{getProposalLabel(proposal)}</Text>
         <Text style={TYPE.display24}>{getProposalTitle(proposal)}</Text>
       </View>
 
-      {isFull && getProposalDescription(proposal) ? (
-        <Text style={TYPE.body13} numberOfLines={3}>
-          {getProposalDescription(proposal)}
+      {description ? (
+        <Text style={[TYPE.body14, { color: INK.muted }]} numberOfLines={3}>
+          {description}
         </Text>
       ) : null}
 
-      {isFull ? <StageStrip proposal={proposal} /> : null}
+      <StageStrip proposal={proposal} />
 
-      <PixelBar colors={getVoteBarColors(split)} height={isFull ? 12 : 10} shimmer={isActive} delay={250 + index * 70} />
+      <PixelBar colors={getVoteBarColors(split)} height={12} shimmer={isActive} delay={250 + index * 70} />
 
-      {isFull ? (
-        <View style={styles.between}>
-          <Legend color={VOTE_COLORS.YES} label={`YES ${Math.round(split.yes)}%`} />
-          <Legend color={VOTE_COLORS.NO} label={`NO ${Math.round(split.no)}%`} />
-          <Legend color={THERMAL_COLORS.mist} label={`ABSTAIN ${Math.round(split.abstain)}%`} />
-        </View>
-      ) : (
-        <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>{formatVoteSummary(split)}</Text>
-      )}
+      <View style={styles.between}>
+        <Legend color={VOTE_COLORS.YES} label={`YES ${Math.round(split.yes)}%`} />
+        <Legend color={VOTE_COLORS.NO} label={`NO ${Math.round(split.no)}%`} />
+        <Legend color={THERMAL_COLORS.mist} label={`ABSTAIN ${Math.round(split.abstain)}%`} />
+      </View>
 
-      {isFull ? <PixelButton label={isActive ? 'CAST YOUR VOTE >' : 'VIEW PROPOSAL >'} onPress={onOpen} /> : null}
+      <PixelButton label={isActive && !userVote ? 'VOTE NOW >' : 'VIEW PROPOSAL >'} onPress={onOpen} />
     </Panel>
   );
 }
 
 function StageStrip({ proposal }: { proposal: GovernanceProposal }) {
   const stages = getProposalStages(proposal);
-  const short = ['STAGE 1', 'STAGE 2', 'EXECUTE'];
 
   return (
-    <View style={[styles.row6, { gap: 8, flexWrap: 'wrap' }]}>
+    <View style={[styles.row6, { flexWrap: 'wrap' }]}>
       {stages.map((stage, index) => {
         const color = STAGE_COLORS[stage.state];
-        const label =
-          stages.length === 3
-            ? `${short[index]}${stage.state === 'live' ? ' · LIVE' : ''}`
-            : index === stages.length - 1
-              ? 'EXECUTE'
-              : 'APPROVAL';
-        const textColor = stage.state === 'waiting' ? 'rgba(255,255,255,0.4)' : color;
+        const textColor = stage.state === 'waiting' ? INK.faint : color;
 
         return (
           <Fragment key={stage.label}>
-            {index > 0 ? <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.4)' }]}>-</Text> : null}
-            <View style={{ width: 8, height: 8, backgroundColor: color }} />
-            <Text style={[TYPE.meta16, { color: textColor }]}>{label}</Text>
+            {index > 0 ? <Text style={[TYPE.meta18, { color: INK.faint }]}>-</Text> : null}
+            <View style={[styles.dot, { backgroundColor: color }]} />
+            <Text style={[TYPE.meta18, { color: textColor }]}>{stage.short}</Text>
           </Fragment>
         );
       })}
@@ -167,8 +144,8 @@ function StageStrip({ proposal }: { proposal: GovernanceProposal }) {
 function Legend({ color, label }: { color: string; label: string }) {
   return (
     <View style={styles.row6}>
-      <View style={{ width: 8, height: 8, backgroundColor: color }} />
-      <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.85)' }]}>{label}</Text>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={[TYPE.meta18, { color: INK.body }]}>{label}</Text>
     </View>
   );
 }
@@ -179,12 +156,12 @@ interface EndedListProps {
   onOpen: (proposal: GovernanceProposal) => void;
 }
 
-/** Ended proposals as one panel with dashed separators; rows cascade in */
+/** Ended proposals as one card with dashed separators; rows cascade in */
 export function EndedList({ proposals, index = 0, onOpen }: EndedListProps) {
   return (
     <Panel padding={0} gap={0} index={index}>
       {proposals.map((proposal, rowIndex) => {
-        const status = STATUS_STYLES[proposal.status];
+        const status = STATUS_TAGS[proposal.status];
         const note = getEndedNote(proposal);
         const isLast = rowIndex === proposals.length - 1;
 
@@ -200,17 +177,20 @@ export function EndedList({ proposals, index = 0, onOpen }: EndedListProps) {
             >
               <View style={styles.between}>
                 <View style={[styles.row6, { gap: 8, flexShrink: 1 }]}>
-                  <Tag label={status.label} color={status.color} textColor={status.textColor} />
-                  <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold, flexShrink: 1 }]} numberOfLines={1}>
-                    {shortenKey(proposal.key, 20)}
+                  <StatusTag label={status.label} status={status.kind} />
+                  <Text style={[TYPE.label12, { color: INK_ENDED_KIND, flexShrink: 1 }]} numberOfLines={1}>
+                    {getProposalLabel(proposal)}
                   </Text>
                 </View>
-                <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.4)' }]}>
-                  {formatAgo(proposal.executedAt ?? proposal.endDate)}
-                </Text>
+                <View style={styles.row6}>
+                  <Text style={[TYPE.meta18, { color: INK.faint }]}>
+                    {formatShortDate(proposal.executedAt ?? proposal.endDate)}
+                  </Text>
+                  <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+                </View>
               </View>
-              <Text style={TYPE.bodyMedium14}>{getProposalTitle(proposal)}</Text>
-              {note ? <Text style={[TYPE.meta16, { color: THERMAL_COLORS.blue }]}>{note}</Text> : null}
+              <Text style={TYPE.meta18}>{getProposalTitle(proposal)}</Text>
+              {note ? <Text style={[TYPE.meta18, { color: INK_NOTE }]}>{note}</Text> : null}
             </Touchable>
             {isLast ? null : <DashedDivider />}
           </View>
@@ -220,8 +200,17 @@ export function EndedList({ proposals, index = 0, onOpen }: EndedListProps) {
   );
 }
 
-/** Card kind label sits a step dimmer than other in-card labels (Figma: 50%) */
+/** "2D 14H LEFT" while voting, "OPENS IN 1D 4H" before it starts */
+function getTiming(proposal: GovernanceProposal): string {
+  return proposal.status === 'ACTIVE'
+    ? `${formatCountdown(proposal.endDate)} LEFT`
+    : `OPENS IN ${formatCountdown(proposal.startDate)}`;
+}
+
+/** Figma uses a few in-between white levels for secondary card text */
 const INK_KIND = 'rgba(255,255,255,0.5)';
+const INK_ENDED_KIND = 'rgba(255,255,255,0.45)';
+const INK_NOTE = 'rgba(255,255,255,0.5)';
 
 const styles = StyleSheet.create({
   between: {
@@ -234,6 +223,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
   },
   endedRow: {
     paddingHorizontal: SPACE.rowX,

@@ -16,6 +16,8 @@ interface PixelButtonProps {
   variant?: PixelButtonVariant;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** `small` matches chip height (27pt) for inline actions like "+ NEW" */
+  size?: 'regular' | 'small';
   /** Overrides the fixed V2 height (44pt) with vertical padding */
   paddingVertical?: number;
 }
@@ -30,6 +32,7 @@ export function PixelButton({
   variant = 'gold',
   disabled = false,
   style,
+  size = 'regular',
   paddingVertical,
 }: PixelButtonProps) {
   const config = VARIANTS[variant];
@@ -64,7 +67,7 @@ export function PixelButton({
           styles.body,
           {
             ...(paddingVertical === undefined
-              ? { height: SIZE.button }
+              ? { height: size === 'small' ? SIZE.chip : SIZE.button }
               : { paddingVertical: Math.max(0, paddingVertical - borderWidth) }),
             backgroundColor: config.background,
             borderColor: config.border ?? 'transparent',
@@ -116,6 +119,6 @@ const styles = StyleSheet.create({
   body: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
 });

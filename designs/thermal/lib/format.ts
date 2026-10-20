@@ -97,6 +97,15 @@ export function formatDayMonth(iso: string): string {
   return `${day} ${MONTHS[date.getMonth()]}`;
 }
 
+/** Proposal date → "2 SEP 2025" */
+export function formatShortDate(value: string | null | undefined): string {
+  const time = parseDateMs(value);
+  if (!Number.isFinite(time)) return '';
+
+  const date = new Date(time);
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 /** Date → "14.10.26" */
 export function formatStampDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');

@@ -11,6 +11,8 @@ interface TabHeaderProps {
   subtitle: string;
   /** Right-hand slot; defaults to the wallet chip */
   accessory?: ReactNode;
+  /** Right side of the subtitle row, e.g. a RULEBOOK link */
+  subtitleAccessory?: ReactNode;
 }
 
 /**
@@ -18,7 +20,7 @@ interface TabHeaderProps {
  * wallet chip on the right, then a Meta 18 line. Always 66pt tall so the
  * three tabs line up when switching.
  */
-export function TabHeader({ title, subtitle, accessory = <WalletChip /> }: TabHeaderProps) {
+export function TabHeader({ title, subtitle, accessory = <WalletChip />, subtitleAccessory }: TabHeaderProps) {
   return (
     <View style={styles.root}>
       <View style={styles.titleRow}>
@@ -27,9 +29,12 @@ export function TabHeader({ title, subtitle, accessory = <WalletChip /> }: TabHe
         </Text>
         {accessory}
       </View>
-      <Text style={[TYPE.meta18, styles.subtitle]} numberOfLines={1}>
-        {subtitle}
-      </Text>
+      <View style={styles.subtitleRow}>
+        <Text style={[TYPE.meta18, styles.subtitle]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+        {subtitleAccessory}
+      </View>
     </View>
   );
 }
@@ -45,7 +50,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  subtitleRow: {
+    height: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   subtitle: {
+    flexShrink: 1,
     color: INK.body,
     // Hard 2pt shadow keeps the line readable over the heat background
     textShadowColor: '#000000',
