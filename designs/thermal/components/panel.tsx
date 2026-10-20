@@ -72,6 +72,7 @@ export function Panel({
       {onPress ? (
         <Pressable
           {...pressHandlers}
+          style={styles.fill}
           onPress={() => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             onPress();
@@ -116,7 +117,12 @@ const styles = StyleSheet.create({
   wrapper: {
     alignSelf: 'stretch',
   },
+  /** Lets a card stretch to its row's height so side-by-side cards match */
+  fill: {
+    flexGrow: 1,
+  },
   body: {
+    flexGrow: 1,
     backgroundColor: THERMAL_COLORS.void,
     borderWidth: SIZE.stroke,
     overflow: 'hidden',

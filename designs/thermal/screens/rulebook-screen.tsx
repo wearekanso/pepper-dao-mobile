@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -10,12 +11,12 @@ import Animated, {
 
 import { StorageService } from '@/lib/storage';
 
-import { Tag, Touchable } from '../components/atoms';
-import { HardShadow } from '../components/panel';
+import { DashedDivider, SectionLabel, Tag, Touchable } from '../components/atoms';
+import { HardShadow, Panel } from '../components/panel';
 import { ThermalScreen } from '../components/thermal-screen';
-import { CONSTITUTION, type ConstitutionArticle } from '../lib/constitution';
-import { DURATION, fadeOut, layoutTransition, TIMING } from '../motion';
-import { THERMAL_COLORS, TYPE } from '../theme';
+import { CONSTITUTION, type ConstitutionArticle, GLANCE_FACTS, VOTING_TRACKS } from '../lib/constitution';
+import { fadeOut, layoutTransition, TIMING } from '../motion';
+import { INK, SIZE, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * RULEBOOK — the constitution as an accordion. Opening an article marks it
@@ -52,47 +53,52 @@ export function RulebookScreen() {
       bottomSpace={48}
       navBar={{ title: 'RULEBOOK', onBack: handleBack, accessory: `READ ${readSet.size} / ${CONSTITUTION.length}` }}
     >
-      <Animated.View style={{ gap: 2 }}>
-        <Text style={TYPE.display40}>RULEBOOK</Text>
-        <Text style={[TYPE.meta18, { color: 'rgba(255,255,255,0.6)' }]}>
-          {`Pepper DAO Constitution · ${CONSTITUTION.length} articles · ~6 min`}
+      <View style={{ gap: 6 }}>
+        <Text style={TYPE.display32}>RULEBOOK</Text>
+        <Text style={[TYPE.meta18, { color: INK.muted }]}>
+          {`Pepper DAO Constitution · ${CONSTITUTION.length} articles · ~6 min read`}
         </Text>
-      </Animated.View>
+      </View>
 
-      <View style={[styles.row, { gap: 3 }]}>
-        {CONSTITUTION.map((article) => (
-          <ProgressCell key={article.number} isRead={readSet.has(article.number)} />
+      <View style={{ gap: 10 }}>
+        <SectionLabel label="AT A GLANCE" />
+        <View style={{ gap: 12 }}>
+          {[GLANCE_FACTS.slice(0, 2), GLANCE_FACTS.slice(2, 4)].map((pair, rowIndex) => (
+            <View key={rowIndex} style={[styles.row, { gap: 12, alignItems: 'stretch' }]}>
+              {pair.map((fact) => (
+                <Panel key={fact.label} gap={4} style={{ flex: 1 }}>
+                  <View style={[styles.row, { gap: 8 }]}>
+                    <Image source={GLANCE_ICONS[fact.icon]} style={{ width: 26, height: 26 }} contentFit="contain" />
+                    <Text style={[TYPE.label12, { color: INK.muted }]}>{fact.label}</Text>
+                  </View>
+                  <Text style={TYPE.display32}>{fact.value}</Text>
+                  <Text style={[TYPE.meta18, { color: INK.muted }]}>{fact.hint}</Text>
+                </Panel>
+              ))}
+            </View>
+          ))}
+        </View>
+        <Panel gap={10}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>VOTING TRACKS</Text>
+          <TrackList />
+        </Panel>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <SectionLabel label="ARTICLES" />
+        {CONSTITUTION.map((article, index) => (
+          <ArticlePanel
+            key={article.number}
+            article={article}
+            index={index}
+            isOpen={openSet.has(article.number)}
+            onToggle={() => toggle(article)}
+          />
         ))}
       </View>
 
-      {CONSTITUTION.map((article, index) => (
-        <ArticlePanel
-          key={article.number}
-          article={article}
-          index={index}
-          isOpen={openSet.has(article.number)}
-          onToggle={() => toggle(article)}
-        />
-      ))}
-
-      <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.4)', textAlign: 'center' }]}>LONG LIVE THE PEPPER PEOPLE</Text>
+      <Text style={[TYPE.label12, { color: INK.faint }]}>LONG LIVE THE PEPPER PEOPLE</Text>
     </ThermalScreen>
-  );
-}
-
-function ProgressCell({ isRead }: { isRead: boolean }) {
-  const fill = useSharedValue(isRead ? 1 : 0);
-
-  useEffect(() => {
-    fill.value = withTiming(isRead ? 1 : 0, { duration: DURATION.reveal });
-  }, [fill, isRead]);
-
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: fill.value }] }));
-
-  return (
-    <View style={styles.progressCell}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: THERMAL_COLORS.gold, transformOrigin: 'left' }, animatedStyle]} />
-    </View>
   );
 }
 
@@ -103,7 +109,7 @@ interface ArticlePanelProps {
   onToggle: () => void;
 }
 
-function ArticlePanel({ article, index, isOpen, onToggle }: ArticlePanelProps) {
+function ArticlePanel({ article, isOpen, onToggle }: ArticlePanelProps) {
   const rotation = useSharedValue(isOpen ? 1 : 0);
   const accent = article.locked ? THERMAL_COLORS.red : THERMAL_COLORS.gold;
 
@@ -116,51 +122,38 @@ function ArticlePanel({ article, index, isOpen, onToggle }: ArticlePanelProps) {
   return (
     <Animated.View layout={layoutTransition()}>
       <HardShadow />
-      <View
-        style={[
-          styles.panel,
-          { borderColor: article.locked ? THERMAL_COLORS.red : THERMAL_COLORS.border },
-        ]}
-      >
+      <View style={[styles.panel, { borderColor: isOpen ? accent : THERMAL_COLORS.border }]}>
         <Touchable onPress={onToggle} pressedOpacity={0.75} style={styles.header}>
-          <Text
-            style={[
-              TYPE.meta26,
-              { color: article.locked ? THERMAL_COLORS.red : isOpen ? THERMAL_COLORS.gold : 'rgba(255,255,255,0.4)' },
-            ]}
-          >
+          <Text style={[TYPE.display24, { color: article.locked ? THERMAL_COLORS.red : isOpen ? THERMAL_COLORS.gold : INK.faint }]}>
             {article.number}
           </Text>
           <View style={{ flex: 1, gap: 2 }}>
             <View style={[styles.row, { gap: 8 }]}>
               <Text style={TYPE.label12}>{article.title}</Text>
-              {article.locked ? <Tag label="LOCKED" color={THERMAL_COLORS.red} textColor={THERMAL_COLORS.white} /> : null}
+              {article.locked ? (
+                <Tag label="PERMANENT" color={THERMAL_COLORS.red} textColor={THERMAL_COLORS.red} variant="outline" />
+              ) : null}
             </View>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>{article.summary}</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>{article.summary}</Text>
           </View>
-          <Animated.Text style={[TYPE.display24, { color: isOpen ? accent : 'rgba(255,255,255,0.6)' }, iconStyle]}>
-            {isOpen ? '-' : '+'}
-          </Animated.Text>
+          <Animated.View style={iconStyle}>
+            <PixelToggle isOpen={isOpen} color={isOpen ? accent : THERMAL_COLORS.white} />
+          </Animated.View>
         </Touchable>
-
-        {article.tracks ? <TrackChips /> : null}
 
         {isOpen ? (
           <Animated.View exiting={fadeOut()} style={{ gap: 12 }}>
-            {article.body ? <Text style={[TYPE.body14, { color: 'rgba(255,255,255,0.85)' }]}>{article.body}</Text> : null}
-            {article.points?.map((point, pointIndex) => (
-              <Animated.View
-                key={point.label}
-               
-                style={{ gap: 2 }}
-              >
-                <Text style={[TYPE.label10, { color: accent }]}>{point.label}</Text>
-                <Text style={TYPE.body13}>{point.text}</Text>
-              </Animated.View>
+            {article.body ? <Text style={TYPE.body14}>{article.body}</Text> : null}
+            {article.tracks ? <TrackList /> : null}
+            {article.points?.map((point) => (
+              <View key={point.label} style={{ gap: 2 }}>
+                <Text style={[TYPE.label12, { color: accent }]}>{point.label}</Text>
+                <Text style={[TYPE.body14, { color: INK.muted }]}>{point.text}</Text>
+              </View>
             ))}
             {article.quote ? (
               <View style={[styles.quote, { borderLeftColor: accent }]}>
-                <Text style={TYPE.body13}>{article.quote}</Text>
+                <Text style={[TYPE.body14, { color: INK.muted }]}>{article.quote}</Text>
               </View>
             ) : null}
           </Animated.View>
@@ -170,13 +163,33 @@ function ArticlePanel({ article, index, isOpen, onToggle }: ArticlePanelProps) {
   );
 }
 
-function TrackChips() {
+/** 12pt pixel "+" / "−" drawn from blocks so it stays on the pixel grid */
+function PixelToggle({ isOpen, color }: { isOpen: boolean; color: string }) {
   return (
-    <View style={[styles.row, { gap: 8 }]}>
-      {TRACKS.map((track) => (
-        <View key={track.label} style={[styles.track, { backgroundColor: track.color }]}>
-          <Text style={[TYPE.label10, { color: track.text }]}>{track.label}</Text>
-          <Text style={[TYPE.meta16, { color: track.text }]}>{track.value}</Text>
+    <View style={styles.toggle}>
+      <View style={[styles.toggleBar, { backgroundColor: color }]} />
+      {isOpen ? null : <View style={[styles.toggleBar, styles.toggleBarVertical, { backgroundColor: color }]} />}
+    </View>
+  );
+}
+
+/** STANDARD / AGILE / FAST rows: colour dot, use, and how long the vote runs */
+function TrackList() {
+  return (
+    <View style={{ gap: 10 }}>
+      {VOTING_TRACKS.map((track, index) => (
+        <View key={track.label} style={{ gap: 10 }}>
+          {index > 0 ? <DashedDivider /> : null}
+          <View style={[styles.row, { gap: 12, alignItems: 'flex-start' }]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={[styles.row, { gap: 8 }]}>
+                <View style={[styles.dot, { backgroundColor: THERMAL_COLORS[track.tone] }]} />
+                <Text style={TYPE.label12}>{track.label}</Text>
+              </View>
+              <Text style={[TYPE.meta18, { color: INK.muted }]}>{track.hint}</Text>
+            </View>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{track.duration}</Text>
+          </View>
         </View>
       ))}
     </View>
@@ -196,11 +209,12 @@ function loadReadSet(): Set<string> {
 
 const READ_KEY = 'thermal:rulebook_read';
 
-const TRACKS = [
-  { label: 'STANDARD', value: '7 DAYS', color: THERMAL_COLORS.violet, text: THERMAL_COLORS.white },
-  { label: 'AGILE', value: '3 DAYS', color: THERMAL_COLORS.orange, text: THERMAL_COLORS.void },
-  { label: 'FAST', value: '48H · 66%', color: THERMAL_COLORS.red, text: THERMAL_COLORS.white },
-];
+const GLANCE_ICONS: Record<(typeof GLANCE_FACTS)[number]['icon'], number> = {
+  vault: require('@/assets/images/pepper/vault.png'),
+  logo: require('@/assets/images/pepper/logo.png'),
+  supply: require('@/assets/images/pepper/total-supply.png'),
+  burn: require('@/assets/images/pepper/burn.png'),
+};
 
 const styles = StyleSheet.create({
   row: {
@@ -212,15 +226,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  progressCell: {
-    flex: 1,
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    overflow: 'hidden',
-  },
   panel: {
-    backgroundColor: THERMAL_COLORS.panel,
-    borderWidth: 2,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
     padding: 14,
     gap: 12,
     overflow: 'hidden',
@@ -231,14 +239,26 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   quote: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderLeftWidth: 3,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderLeftWidth: SIZE.stroke,
+    paddingLeft: 12,
   },
-  track: {
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+  dot: {
+    width: 8,
+    height: 8,
+  },
+  toggle: {
+    width: 12,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleBar: {
+    position: 'absolute',
+    width: 12,
+    height: 2,
+  },
+  toggleBarVertical: {
+    width: 2,
+    height: 12,
   },
 });
