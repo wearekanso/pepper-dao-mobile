@@ -11,6 +11,7 @@ import {
   JALAPENO_XML,
   LEADER_XML,
   PEPPER_SMALL_XML,
+  PEPPER_VIVID_XML,
   SCROLL_XML,
 } from '../assets/pixel-art-xml';
 import type { HeatLevel } from '../lib/heat-levels';
@@ -19,6 +20,7 @@ const ART = {
   activeMarker: { xml: ACTIVE_MARKER_XML, width: 15, height: 9 },
   corner: { xml: CORNER_XML, width: 24, height: 24 },
   pepperSmall: { xml: PEPPER_SMALL_XML, width: 18, height: 24 },
+  pepperVivid: { xml: PEPPER_VIVID_XML, width: 19, height: 28.5 },
   jalapeno: { xml: JALAPENO_XML, width: 18, height: 24 },
   flameSmall: { xml: FLAME_SMALL_XML, width: 15, height: 18 },
   flameLarge: { xml: FLAME_LARGE_XML, width: 30, height: 36 },

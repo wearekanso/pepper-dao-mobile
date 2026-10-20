@@ -8,19 +8,71 @@ import { formatAgo, formatCountdown, shortenKey } from '../lib/format';
 import {
   formatVoteSummary,
   getEndedNote,
+  getProposalKind,
   getProposalDescription,
   getProposalTitle,
   getProposalStages,
   getTrackShort,
+  getUserVote,
   getVoteSplit,
   STAGE_COLORS,
   STATUS_STYLES,
 } from '../lib/proposal';
-import { SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
+import { INK, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 import { DashedDivider, Tag, Touchable } from './atoms';
 import { Panel } from './panel';
 import { getVoteBarColors, PixelBar } from './pixel-bar';
 import { PixelButton } from './pixel-button';
+
+interface LiveVoteCardProps {
+  proposal: GovernanceProposal;
+  index?: number;
+  onOpen: () => void;
+}
+
+/**
+ * V2 live vote card (Pulse): white 2pt stroke, kind + time left, title,
+ * vote bar, split and the wallet's own vote status. The LIVE NOW marker
+ * sits above it, outside the card.
+ */
+export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps) {
+  const split = getVoteSplit(proposal);
+  const isActive = proposal.status === 'ACTIVE';
+  const userVote = getUserVote(proposal);
+  const timing = isActive
+    ? `${formatCountdown(proposal.endDate)} LEFT`
+    : `OPENS IN ${formatCountdown(proposal.startDate)}`;
+
+  return (
+    <Panel live index={index} onPress={onOpen}>
+      <View style={{ gap: 4 }}>
+        <View style={styles.between}>
+          <Text style={[TYPE.label12, { color: INK_KIND, flexShrink: 1 }]} numberOfLines={1}>
+            {`${getProposalKind(proposal)} · ${shortenKey(proposal.key)}`}
+          </Text>
+          <Text style={[TYPE.meta18, { color: INK.body }]}>{timing}</Text>
+        </View>
+        <Text style={TYPE.display24}>{getProposalTitle(proposal)}</Text>
+      </View>
+
+      <PixelBar colors={getVoteBarColors(split)} height={10} shimmer={isActive} delay={250 + index * 70} />
+
+      <Text style={[TYPE.meta18, { color: INK.muted }]}>{formatVoteSummary(split)}</Text>
+
+      <DashedDivider />
+
+      <View style={styles.between}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>
+          {userVote ? `YOU VOTED ${userVote}` : "YOU HAVEN'T VOTED YET"}
+        </Text>
+        <View style={styles.row6}>
+          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{userVote ? 'VIEW' : 'VOTE'}</Text>
+          <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+        </View>
+      </View>
+    </Panel>
+  );
+}
 
 interface LiveProposalPanelProps {
   proposal: GovernanceProposal;
@@ -167,6 +219,9 @@ export function EndedList({ proposals, index = 0, onOpen }: EndedListProps) {
     </Panel>
   );
 }
+
+/** Card kind label sits a step dimmer than other in-card labels (Figma: 50%) */
+const INK_KIND = 'rgba(255,255,255,0.5)';
 
 const styles = StyleSheet.create({
   between: {

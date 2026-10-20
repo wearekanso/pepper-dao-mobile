@@ -1,6 +1,6 @@
 import { getVoteDistribution } from '@/lib/voting-calculations';
 import { deriveVotingTrack, VOTING_TRACK_DURATION_LABELS, type VotingTrack } from '@/lib/voting-tracks';
-import type { GovernanceProposal, GovernanceStatus } from '@/types/governance';
+import type { GovernanceProposal, GovernanceStatus, VoteOption } from '@/types/governance';
 
 import { THERMAL_COLORS } from '../theme';
 import { parseDateMs } from './format';
@@ -42,6 +42,18 @@ export function isLiveProposal(proposal: GovernanceProposal): boolean {
   return proposal.status === 'ACTIVE' || proposal.status === 'PENDING';
 }
 
+/** Which body votes on it: "COMMUNITY VOTE", "COUNCIL VOTE" … */
+export function getProposalKind(proposal: GovernanceProposal): string {
+  return PROPOSAL_KIND[proposal.type];
+}
+
+/** The connected wallet's recorded vote, if any */
+export function getUserVote(proposal: GovernanceProposal): Exclude<VoteOption, 'NONE'> | null {
+  const option = proposal.userVote?.voteOption;
+  if (!option || option === 'NONE') return null;
+  return option;
+}
+
 export function getVoteSplit(proposal: GovernanceProposal): VoteSplit {
   if (!proposal.tally) return { yes: 0, no: 0, abstain: 0 };
   return getVoteDistribution(proposal.tally);
@@ -51,6 +63,13 @@ export function formatVoteSummary(split: VoteSplit): string {
   if (split.yes + split.no + split.abstain === 0) return 'NO VOTES YET';
   return `${Math.round(split.yes)}% YES · ${Math.round(split.no)}% NO · ${Math.round(split.abstain)}% ABSTAIN`;
 }
+
+const PROPOSAL_KIND: Record<GovernanceProposal['type'], string> = {
+  PEP: 'COMMUNITY VOTE',
+  MULTISIG: 'COUNCIL VOTE',
+  ADMIN: 'ADMIN ACTION',
+  OTHER: 'PROPOSAL',
+};
 
 const TRACK_SHORT: Record<VotingTrack, string> = {
   STANDARD: 'STANDARD · 7D',

@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 
 import { useUser } from '@/contexts/user-context';
 import { useGovernanceProposals } from '@/hooks/use-governance';
@@ -11,23 +10,23 @@ import { usePepperTokenMetrics } from '@/hooks/use-pepper-token-metrics';
 import { calculateBurnedFromOriginalSupply, formatPepperAmount } from '@/lib/pepper-metrics';
 import { telemetry } from '@/lib/telemetry';
 
-import { BlinkDot, ChevronLink, StatusLabel } from '../components/atoms';
+import { ChevronLink, LiveMarker, SectionLabel } from '../components/atoms';
 import { CornerBrackets } from '../components/corner-brackets';
 import { InfoSheet } from '../components/info-sheet';
 import { Panel } from '../components/panel';
 import { PixelArt } from '../components/pixel-art';
 import { PixelButton } from '../components/pixel-button';
-import { LiveProposalPanel } from '../components/proposal-panels';
+import { LiveVoteCard } from '../components/proposal-panels';
 import { ThermalScreen } from '../components/thermal-screen';
 import { TreasurySheet } from '../components/treasury-sheet';
-import { WalletChip } from '../components/wallet-chip';
+import { TabHeader } from '../components/tab-header';
 import { useCountUp } from '../hooks/use-count-up';
 import { useFocusKey } from '../hooks/use-focus-key';
 import { DEMO_PROPOSAL_ID, DEMO_VOTE_ENABLED } from '../lib/demo-vote';
 import { formatCompact, formatInteger, tokenToNumber } from '../lib/format';
 import { getHeatProgress } from '../lib/heat-levels';
 import { isLiveProposal } from '../lib/proposal';
-import { THERMAL_COLORS, TYPE } from '../theme';
+import { INK, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * PULSE — the DAO's vital signs: treasury, token readouts, the live vote
@@ -57,21 +56,21 @@ export function PulseScreen() {
         label: 'SUPPLY',
         icon: ICON_SUPPLY,
         value: metrics ? formatCompact(tokenToNumber(metrics.totalSupply, decimals)) : '–',
-        hint: metrics ? formatPepperAmount(metrics.totalSupply, decimals) : 'loading…',
+        hint: 'total PEPPER',
       },
       {
         key: 'burnt',
         label: 'BURNT',
         icon: ICON_BURN,
         value: burned !== null ? formatCompact(burned) : '–',
-        hint: 'gone forever',
+        hint: 'burned for good',
       },
       {
         key: 'staked',
         label: 'STAKED',
         icon: ICON_VAULT,
         value: metrics?.hasStakedData ? formatCompact(tokenToNumber(metrics.stakedAmount, decimals)) : '–',
-        hint: 'locked as vePEPPER',
+        hint: 'locked to vote',
         modal: 'staked',
       },
       {
@@ -79,7 +78,7 @@ export function PulseScreen() {
         label: 'CEX FUND',
         icon: ICON_CEX,
         value: metrics ? formatCompact(tokenToNumber(metrics.cexFundChzBalance, 18)) : '–',
-        hint: 'CHZ · tier-1 listing',
+        hint: 'CHZ · exchange listing',
         modal: 'cex',
       },
     ];
@@ -101,79 +100,46 @@ export function PulseScreen() {
 
   return (
     <ThermalScreen preset="pulse" refreshing={isFetching && Boolean(metrics)} onRefresh={handleRefresh}>
-      <Animated.View style={styles.between}>
-        <View style={styles.row6}>
-          <BlinkDot />
-          <Text style={TYPE.meta18}>LIVE · TREASURY</Text>
-        </View>
-        <WalletChip />
-      </Animated.View>
+      <TabHeader title="PULSE" subtitle="DAO TREASURY & TOKEN" />
 
       <Pressable onPress={() => setModal('treasury')} onLongPress={() => setModal('treasuryInfo')}>
         <View style={styles.hero}>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>DAO TREASURY · MANAGED BY VOTE</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>DAO TREASURY · MANAGED BY VOTE</Text>
           <View style={styles.heroValue}>
-            <Text style={[TYPE.display72, styles.dropShadow, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>
+            <Text style={[TYPE.display58, styles.dropShadow, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>
               {metrics ? formatInteger(animatedTreasury) : '––––––'}
             </Text>
-            <Text style={[TYPE.label15, styles.dropShadowSmall, { marginBottom: 8 }]}>CHZ</Text>
+            <Text style={[TYPE.label14, styles.dropShadowSmall]}>CHZ</Text>
           </View>
-          <Text style={[TYPE.meta20, { color: THERMAL_COLORS.gold }]}>{formatDelta(delta)}</Text>
+          <View style={styles.between}>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{formatDelta(delta)}</Text>
+            <ChevronLink label="ACTIVITY" onPress={() => setModal('treasury')} />
+          </View>
           <CornerBrackets size={16} focusKey={focusKey} />
         </View>
       </Pressable>
 
-      <Animated.View style={[styles.row, { gap: 12 }]}>
+      <View style={[styles.row, { gap: 12 }]}>
         <PixelButton label="GET PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => void handleGetPepper()} />
-        <PixelButton label="STAKE & VOTE" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
-      </Animated.View>
-
-      <View style={{ gap: 12 }}>
-        {[readouts.slice(0, 2), readouts.slice(2, 4)].map((pair, rowIndex) => (
-          <View key={rowIndex} style={[styles.row, { gap: 12 }]}>
-            {pair.map((readout, columnIndex) => (
-              <Panel
-                key={readout.key}
-                index={2 + rowIndex * 2 + columnIndex}
-                gap={6}
-                style={{ flex: 1 }}
-                onPress={readout.modal ? () => setModal(readout.modal!) : undefined}
-              >
-                <View style={[styles.row, { gap: 8, alignItems: 'center' }]}>
-                  <Image source={readout.icon} style={{ width: 26, height: 26 }} contentFit="contain" />
-                  <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>{readout.label}</Text>
-                </View>
-                <Text style={TYPE.display32} numberOfLines={1} adjustsFontSizeToFit>
-                  {readout.value}
-                </Text>
-                <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]} numberOfLines={1} adjustsFontSizeToFit>
-                  {readout.hint}
-                </Text>
-              </Panel>
-            ))}
-          </View>
-        ))}
+        <PixelButton label="STAKE PEPPER" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
       </View>
 
-      <View style={styles.between}>
-        <StatusLabel label="LIVE NOW" />
-        <ChevronLink label="ALL PROPOSALS" onPress={() => router.push('/governance')} />
-      </View>
+      <View style={{ gap: 8 }}>
+        <View style={styles.between}>
+          {liveProposal ? <LiveMarker /> : <SectionLabel label="LIVE VOTE" />}
+          <ChevronLink label="ALL PROPOSALS" onPress={() => router.push('/governance')} />
+        </View>
 
-      {liveProposal ? (
-        <LiveProposalPanel
-          proposal={liveProposal}
-          variant="compact"
-          index={6}
-          onOpen={() => router.push(`/governance/${liveProposal.id}`)}
-        />
-      ) : (
-        <Panel index={6}>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>NO SIGNAL</Text>
-          <Text style={TYPE.display24}>No live vote right now</Text>
-          <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>The next proposal will heat up here.</Text>
-        </Panel>
-      )}
+        {liveProposal ? (
+          <LiveVoteCard proposal={liveProposal} index={2} onOpen={() => router.push(`/governance/${liveProposal.id}`)} />
+        ) : (
+          <Panel index={2}>
+            <Text style={[TYPE.label12, { color: INK.muted }]}>NO SIGNAL</Text>
+            <Text style={TYPE.display24}>No live vote right now</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>The next proposal will heat up here.</Text>
+          </Panel>
+        )}
+      </View>
 
       {DEMO_VOTE_ENABLED ? (
         <PixelButton
@@ -183,18 +149,51 @@ export function PulseScreen() {
         />
       ) : null}
 
-      <HeatShortcut index={7} onPress={() => router.push('/power')} />
+      <HeatShortcut index={3} onPress={() => router.push('/power')} />
+
+      <View style={{ gap: 10 }}>
+        <SectionLabel label="PEPPER TOKEN" />
+        <View style={{ gap: 12 }}>
+          {[readouts.slice(0, 2), readouts.slice(2, 4)].map((pair, rowIndex) => (
+            <View key={rowIndex} style={[styles.row, { gap: 12 }]}>
+              {pair.map((readout, columnIndex) => (
+                <Panel
+                  key={readout.key}
+                  index={4 + rowIndex * 2 + columnIndex}
+                  gap={6}
+                  style={{ flex: 1 }}
+                  onPress={readout.modal ? () => setModal(readout.modal!) : undefined}
+                >
+                  <View style={styles.between}>
+                    <View style={[styles.row, { gap: 8, alignItems: 'center' }]}>
+                      <Image source={readout.icon} style={{ width: 26, height: 26 }} contentFit="contain" />
+                      <Text style={[TYPE.label12, { color: INK.muted }]}>{readout.label}</Text>
+                    </View>
+                    {readout.modal ? <Chevron /> : null}
+                  </View>
+                  <Text style={TYPE.display32} numberOfLines={1} adjustsFontSizeToFit>
+                    {readout.value}
+                  </Text>
+                  <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {readout.hint}
+                  </Text>
+                </Panel>
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
 
       <Panel index={8} onPress={() => router.push('/rulebook')}>
         <View style={[styles.row, { gap: 12, alignItems: 'center' }]}>
           <PixelArt name="scroll" />
           <View style={{ flex: 1 }}>
             <Text style={TYPE.label12}>RULEBOOK</Text>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>
+            <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1}>
               {'Constitution, voting tracks & red lines'}
             </Text>
           </View>
-          <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+          <Chevron />
         </View>
       </Panel>
 
@@ -237,9 +236,9 @@ function HeatShortcut({ index, onPress }: HeatShortcutProps) {
   return (
     <Panel index={index} onPress={onPress}>
       <View style={[styles.row, { gap: 12, alignItems: 'center' }]}>
-        <PixelArt name="pepperSmall" />
+        <PixelArt name="pepperVivid" />
         <View style={{ flex: 1 }}>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>YOUR HEAT</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT</Text>
           <Text style={TYPE.meta18} numberOfLines={1}>
             {heat ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU` : 'CONNECT TO HEAT UP'}
           </Text>
@@ -247,13 +246,18 @@ function HeatShortcut({ index, onPress }: HeatShortcutProps) {
         {streakWeeks > 0 ? (
           <View style={[styles.row, { gap: 4, alignItems: 'center' }]}>
             <PixelArt name="flameSmall" />
-            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.orange }]}>{`${streakWeeks}W`}</Text>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.orange }]}>{`${streakWeeks}-WEEK STREAK`}</Text>
           </View>
         ) : null}
-        <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+        <Chevron />
       </View>
     </Panel>
   );
+}
+
+/** Gold ">" at the right edge of a tappable card */
+function Chevron() {
+  return <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>;
 }
 
 function formatDelta(delta: bigint | null): string {
@@ -287,11 +291,6 @@ const CEX_FUND_ADDRESS = '0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B';
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-  },
-  row6: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   between: {
     flexDirection: 'row',
