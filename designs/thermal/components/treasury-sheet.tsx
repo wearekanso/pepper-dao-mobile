@@ -10,7 +10,7 @@ import type { TreasuryChzTx, TreasuryWindow } from '@/services/chiliz-api';
 
 import { shortenAddress } from '../lib/format';
 import { FEEDBACK_HOLD_MS } from '../motion';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 import { DashedDivider, FilterChip, Tag, Touchable } from './atoms';
 import { HardShadow } from './panel';
 import { PixelButton } from './pixel-button';
@@ -60,20 +60,22 @@ export function TreasurySheet({ visible, onClose, address }: TreasurySheetProps)
       visible={visible}
       onClose={onClose}
       title="TREASURY ACTIVITY"
-      subtitle="Every CHZ moving in or out of the DAO treasury. Managed by vote."
+      subtitle="Every CHZ moving in or out of the DAO treasury."
       footer={<PixelButton label="VIEW ON CHILISCAN >" variant="gold" style={{ flex: 1 }} onPress={() => void handleExplorer()} />}
     >
       <View style={styles.filters}>
         {WINDOWS.map((item) => (
-          <FilterChip key={item.id} label={item.label} isActive={timeWindow === item.id} onPress={() => setTimeWindow(item.id)} />
+          <FilterChip
+            key={item.id}
+            label={item.label}
+            isActive={timeWindow === item.id}
+            onPress={() => setTimeWindow(item.id)}
+            style={{ flex: 1 }}
+          />
         ))}
       </View>
 
-      <SheetSection
-        label="TRANSFERS"
-        right={copied ? 'ADDRESS COPIED' : isLoading ? 'SCANNING…' : `${totals.in} IN · ${totals.out} OUT`}
-        rightColor={copied ? THERMAL_COLORS.orange : undefined}
-      />
+      <SheetSection label="TRANSFERS" right={isLoading ? 'SCANNING…' : `${totals.in} IN · ${totals.out} OUT`} />
 
       <View>
         <HardShadow />
@@ -89,7 +91,7 @@ export function TreasurySheet({ visible, onClose, address }: TreasurySheetProps)
             </View>
           ) : list.length === 0 ? (
             <View style={styles.state}>
-              <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>No transfers in this window.</Text>
+              <Text style={[TYPE.meta18, { color: INK.muted }]}>No transfers in this window.</Text>
             </View>
           ) : (
             list.map((tx, index) => (
@@ -114,22 +116,24 @@ interface TxRowProps {
 function TxRow({ tx, copied, onCopy }: TxRowProps) {
   const isIn = tx.direction === 'in';
   const counterparty = isIn ? tx.from : tx.to;
+  const isCopied = copied === counterparty;
 
   return (
     <View style={styles.row}>
       <View style={styles.between}>
         <View style={[styles.between, { gap: 8 }]}>
-          <Tag label={isIn ? 'IN' : 'OUT'} color={isIn ? THERMAL_COLORS.cream : THERMAL_COLORS.blue} textColor={isIn ? THERMAL_COLORS.void : THERMAL_COLORS.white} />
-          <Text style={[TYPE.display24, { color: isIn ? THERMAL_COLORS.cream : THERMAL_COLORS.white }]}>
-            {`${isIn ? '+' : '-'}${formatPepperAmount(tx.value, 18)}`}
+          <Tag label={isIn ? 'IN' : 'OUT'} color={THERMAL_COLORS.border} textColor={THERMAL_COLORS.white} variant="outline" />
+          <Text style={[TYPE.display24, { color: isIn ? THERMAL_COLORS.white : INK.muted }]}>
+            {`${isIn ? '+' : '−'}${formatPepperAmount(tx.value, 18)}`}
           </Text>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>CHZ</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>CHZ</Text>
         </View>
-        <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.4)' }]}>{formatTimeAgoFromSeconds(tx.timestamp).toUpperCase()}</Text>
+        <Text style={[TYPE.meta18, { color: INK.faint }]}>{formatTimeAgoFromSeconds(tx.timestamp).toUpperCase()}</Text>
       </View>
-      <Touchable onPress={() => onCopy(counterparty)} hitSlop={6}>
-        <Text style={[TYPE.meta16, { color: copied === counterparty ? THERMAL_COLORS.orange : 'rgba(255,255,255,0.6)' }]}>
-          {`${isIn ? 'FROM' : 'TO'} ${shortenAddress(counterparty)}${copied === counterparty ? ' · COPIED' : ''}`}
+      <Touchable onPress={() => onCopy(counterparty)} hitSlop={6} style={styles.between}>
+        <Text style={[TYPE.meta18, { color: INK.muted }]}>{`${isIn ? 'From' : 'To'} ${shortenAddress(counterparty)}`}</Text>
+        <Text style={[TYPE.label12, { color: isCopied ? STATUS_COLORS.positive.text : THERMAL_COLORS.gold }]}>
+          {isCopied ? 'COPIED' : 'COPY'}
         </Text>
       </Touchable>
     </View>
@@ -141,7 +145,6 @@ const WINDOWS: Array<{ id: TreasuryWindow; label: string }> = [
   { id: '7d', label: '7D' },
   { id: '30d', label: '30D' },
   { id: '365d', label: '1Y' },
-  { id: 'all', label: 'ALL' },
 ];
 
 const EXPLORER_URL = 'https://chiliscan.com';
@@ -152,8 +155,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   list: {
-    backgroundColor: THERMAL_COLORS.panel,
-    borderWidth: 2,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
     borderColor: THERMAL_COLORS.border,
   },
   row: {

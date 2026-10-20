@@ -205,6 +205,8 @@ export function PulseScreen() {
         visible={modal === 'treasuryInfo'}
         onClose={() => setModal(null)}
         title="DAO TREASURY"
+        value={metrics ? formatCompact(treasuryChz) : undefined}
+        unit="CHZ"
         message="These funds are managed by the PEPPER community through voting. Every penny spent is visible on-chain."
         address={TREASURY_ADDRESS}
       />
@@ -212,6 +214,8 @@ export function PulseScreen() {
         visible={modal === 'supply'}
         onClose={() => setModal(null)}
         title="TOTAL SUPPLY"
+        value={readouts[0].value}
+        unit="PEPPER"
         message="All PEPPER that exists right now. Supply started at 8,888,888,888,000,000 and only goes down as tokens are burned."
         address={PEPPER_TOKEN_ADDRESS}
       />
@@ -219,6 +223,8 @@ export function PulseScreen() {
         visible={modal === 'burnt'}
         onClose={() => setModal(null)}
         title="BURNT PEPPER"
+        value={readouts[1].value}
+        unit="PEPPER"
         message="PEPPER removed from circulation for good: the gap between the original 8.888Q supply and what exists today. Burned tokens never come back."
         address={PEPPER_TOKEN_ADDRESS}
       />
@@ -226,6 +232,8 @@ export function PulseScreen() {
         visible={modal === 'staked'}
         onClose={() => setModal(null)}
         title="STAKED PEPPER"
+        value={readouts[2].value}
+        unit="vePEPPER"
         message="The total amount of PEPPER locked as vePEPPER. Staked PEPPER is what powers governance votes."
         address={STAKING_ADDRESS}
       />
@@ -233,6 +241,8 @@ export function PulseScreen() {
         visible={modal === 'cex'}
         onClose={() => setModal(null)}
         title="CEX FUND"
+        value={readouts[3].value}
+        unit="CHZ"
         message="The CEX Fund will be used to secure a Tier 1 Centralized Exchange listing for PEPPER. If the funds raised are insufficient after 90 days, they will be returned to the PEPPER Treasury to be managed by the community."
         address={CEX_FUND_ADDRESS}
       />

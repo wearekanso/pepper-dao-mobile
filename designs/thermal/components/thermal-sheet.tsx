@@ -23,7 +23,7 @@ interface ThermalSheetProps {
   onClose: () => void;
   /** Centered Tiny5 title in the sheet's nav bar, e.g. "STAKE PEPPER" */
   title: string;
-  /** Intro paragraph at the top of the body */
+  /** One-line intro under the nav bar (Meta 18; long reading text goes in children) */
   subtitle?: string;
   children: ReactNode;
   /** Pinned below the body — V2 puts only the primary button here */
@@ -111,7 +111,7 @@ export function ThermalSheet({ visible, onClose, title, subtitle, children, foot
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.content, !footer && { paddingBottom: insets.bottom + 24 }]}
           >
-            {subtitle ? <Text style={TYPE.body14}>{subtitle}</Text> : null}
+            {subtitle ? <Text style={[TYPE.meta18, { color: INK.body }]}>{subtitle}</Text> : null}
             {children}
           </ScrollView>
 

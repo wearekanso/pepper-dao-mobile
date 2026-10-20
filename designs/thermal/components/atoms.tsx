@@ -17,6 +17,8 @@ import { INK, SIZE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 interface TouchableProps extends Omit<PressableProps, 'style' | 'children'> {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Style for the outer pressable, e.g. `flex: 1` inside a row */
+  containerStyle?: StyleProp<ViewStyle>;
   pressedOpacity?: number;
 }
 
@@ -24,13 +26,14 @@ interface TouchableProps extends Omit<PressableProps, 'style' | 'children'> {
  * Pressable with a static style and a fade on press. NativeWind's Pressable
  * interop drops function-style props, so press feedback lives in an inner view.
  */
-export function Touchable({ children, style, pressedOpacity = 0.6, onPressIn, onPressOut, ...rest }: TouchableProps) {
+export function Touchable({ children, style, containerStyle, pressedOpacity = 0.6, onPressIn, onPressOut, ...rest }: TouchableProps) {
   const { pressed, pressHandlers } = usePressFeedback();
   const animatedStyle = useAnimatedStyle(() => ({ opacity: 1 - pressed.value * (1 - pressedOpacity) }));
 
   return (
     <Pressable
       {...rest}
+      style={containerStyle}
       onPressIn={(event) => {
         pressHandlers.onPressIn();
         onPressIn?.(event);
@@ -222,10 +225,11 @@ interface FilterChipProps {
   label: string;
   isActive: boolean;
   onPress: () => void;
+  style?: StyleProp<ViewStyle>;
 }
 
 /** Segment / filter chip — gold when active (ALL · ADMIN · PEP, 24H · 7D …) */
-export function FilterChip({ label, isActive, onPress }: FilterChipProps) {
+export function FilterChip({ label, isActive, onPress, style }: FilterChipProps) {
   return (
     <Touchable
       onPress={() => {
@@ -238,6 +242,7 @@ export function FilterChip({ label, isActive, onPress }: FilterChipProps) {
           ? { backgroundColor: THERMAL_COLORS.gold, borderColor: THERMAL_COLORS.gold }
           : { borderColor: THERMAL_COLORS.border },
       ]}
+      containerStyle={style}
     >
       <Text style={[TYPE.label12, { color: isActive ? THERMAL_COLORS.void : INK.muted }]}>{label}</Text>
     </Touchable>
