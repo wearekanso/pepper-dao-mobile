@@ -273,7 +273,7 @@ export function PulseScreen() {
         title="CEX FUND"
         value={readouts[3].value}
         unit="CHZ"
-        message="The CEX Fund will be used to secure a Tier 1 Centralized Exchange listing for PEPPER. If the funds raised are insufficient after 90 days, they will be returned to the PEPPER Treasury to be managed by the community."
+        message="Raised to secure a Tier 1 centralized exchange listing for PEPPER. If it isn't enough after 90 days, the funds go back to the treasury and the community decides what to do with them."
         address={CEX_FUND_ADDRESS}
       />
     </ThermalScreen>
