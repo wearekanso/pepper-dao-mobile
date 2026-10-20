@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useWalletInfo } from '@reown/appkit-react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 
 import { useUser } from '@/contexts/user-context';
 import { useVoting } from '@/hooks/use-voting';
@@ -197,6 +198,11 @@ function PickBody({ proposal, selected, powerLine, points, isFirstVote, onSelect
 }
 
 function ConfirmBody({ proposal, option, powerLine }: { proposal: GovernanceProposal; option: CastOption; powerLine: string }) {
+  const { walletInfo } = useWalletInfo();
+  const walletName = walletInfo?.name;
+  // Signing happens in the wallet app; if it didn't come up, open it by hand
+  const walletLink = walletInfo?.redirect?.native ?? walletInfo?.redirect?.universal;
+
   return (
     <>
       <Text style={TYPE.display24}>CONFIRM IN YOUR WALLET</Text>
@@ -216,9 +222,22 @@ function ConfirmBody({ proposal, option, powerLine }: { proposal: GovernanceProp
 
       <View style={{ gap: 12 }}>
         {CONFIRM_STEPS.map((step, index) => (
-          <ConfirmStep key={step.title} index={index} title={step.title} hint={step.hint} isLive={index === 0} />
+          <ConfirmStep
+            key={step.title}
+            index={index}
+            title={step.title}
+            hint={index === 0 && walletName ? walletName : step.hint}
+            isLive={index === 0}
+          />
         ))}
       </View>
+
+      {walletName && walletLink ? (
+        <View style={styles.between}>
+          <Text style={TYPE.meta18}>Wallet didn&apos;t open?</Text>
+          <ChevronLink label={`OPEN ${walletName.toUpperCase()}`} onPress={() => void Linking.openURL(walletLink)} />
+        </View>
+      ) : null}
     </>
   );
 }
