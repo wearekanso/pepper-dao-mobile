@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     height: BUTTON_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: THERMAL_COLORS.chip,
+    backgroundColor: THERMAL_COLORS.void,
     borderWidth: 2,
     borderColor: THERMAL_COLORS.border,
   },

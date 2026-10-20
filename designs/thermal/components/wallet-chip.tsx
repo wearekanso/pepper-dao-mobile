@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: THERMAL_COLORS.chip,
+    backgroundColor: THERMAL_COLORS.void,
     borderWidth: 2,
     borderColor: THERMAL_COLORS.border,
   },
