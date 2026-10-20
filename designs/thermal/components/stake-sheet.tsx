@@ -5,7 +5,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStaking } from '@/hooks/use-staking';
 
 import { formatCompact, formatInteger } from '../lib/format';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 import { FilterChip, Touchable } from './atoms';
 import { HardShadow } from './panel';
 import { PixelButton } from './pixel-button';
@@ -106,7 +106,6 @@ export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
       onClose={handleClose}
       locked={isPending}
       title={isStake ? 'STAKE PEPPER' : 'UNSTAKE PEPPER'}
-      subtitle="Staked PEPPER becomes vePEPPER: your voting power, plus +5 REP every week."
       footer={
         <PixelButton
           label={submitLabel}
@@ -117,9 +116,11 @@ export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
         />
       }
     >
+      <Text style={TYPE.body14}>Staked PEPPER becomes vePEPPER: your voting power, plus +5 REP every week.</Text>
+
       <View style={styles.row}>
-        <FilterChip label="STAKE" isActive={isStake} onPress={() => selectMode('stake')} />
-        <FilterChip label="UNSTAKE" isActive={!isStake} onPress={() => selectMode('unstake')} />
+        <FilterChip label="STAKE" isActive={isStake} onPress={() => selectMode('stake')} style={{ flex: 1 }} />
+        <FilterChip label="UNSTAKE" isActive={!isStake} onPress={() => selectMode('unstake')} style={{ flex: 1 }} />
       </View>
 
       <View style={[styles.row, { gap: 12 }]}>
@@ -128,64 +129,93 @@ export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
       </View>
 
       {queryError && !stakingData ? (
-        <View style={[styles.notice, { borderLeftColor: THERMAL_COLORS.red }]}>
-          <Text style={TYPE.body13}>Unable to load staking data.</Text>
+        <View style={styles.notice}>
+          <Text style={[TYPE.body14, { color: INK.muted }]}>Unable to load staking data.</Text>
           <Touchable onPress={() => void refetch()}>
-            <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold }]}>RETRY</Text>
+            <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>RETRY</Text>
           </Touchable>
         </View>
       ) : null}
 
-      <SheetSection
-        label={isStake ? 'AMOUNT TO STAKE' : 'AMOUNT TO UNSTAKE'}
-        right={`MAX ${formatInteger(maxAmount)}`}
-      />
+      <SheetSection label="AMOUNT" right={`MAX ${formatInteger(maxAmount)}`} />
 
       <View>
         <HardShadow />
-        <View style={[styles.input, inputError && { borderColor: THERMAL_COLORS.red }]}>
+        <View
+          style={[
+            styles.input,
+            { borderColor: inputError ? STATUS_COLORS.negative.stroke : amountNum > 0 ? THERMAL_COLORS.white : THERMAL_COLORS.border },
+          ]}
+        >
           <TextInput
             value={amount ? formatInteger(amountNum) : ''}
             onChangeText={(text) => setAmount(text.replace(/[^0-9]/g, '').replace(/^0+/, ''))}
             placeholder="0"
-            placeholderTextColor="rgba(255,255,255,0.4)"
+            placeholderTextColor={INK.faint}
             keyboardType="number-pad"
             editable={!isPending}
-            style={[TYPE.display40, styles.inputText]}
+            style={[TYPE.display32, styles.inputText]}
           />
-          <Text style={[TYPE.label12, { color: 'rgba(255,255,255,0.6)' }]}>PEPPER</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>PEPPER</Text>
         </View>
       </View>
 
       <View style={[styles.row, { gap: 8 }]}>
         {PERCENTS.map((percent) => (
-          <View key={percent} style={{ flex: 1 }}>
-            <FilterChip
-              label={percent === 100 ? 'MAX' : `${percent}%`}
-              isActive={maxAmount > 0 && amountNum === Math.floor((maxAmount * percent) / 100)}
-              onPress={() => setPercent(percent)}
-            />
-          </View>
+          <FilterChip
+            key={percent}
+            label={percent === 100 ? 'MAX' : `${percent}%`}
+            isActive={maxAmount > 0 && amountNum === Math.floor((maxAmount * percent) / 100)}
+            onPress={() => setPercent(percent)}
+            style={{ flex: 1 }}
+          />
         ))}
       </View>
 
-      {inputError ? <Text style={[TYPE.label10, { color: THERMAL_COLORS.red }]}>{inputError}</Text> : null}
+      {inputError ? <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>{inputError}</Text> : null}
+
+      {amountNum > 0 && !inputError ? (
+        <View>
+          <HardShadow />
+          <View style={styles.preview}>
+            <PreviewRow label="YOU GET" value={`${formatInteger(amountNum)} ${isStake ? 'vePEPPER' : 'PEPPER'}`} />
+            {isStake ? <PreviewRow label="WEEKLY REWARD" value="+5 REP / WEEK" color={THERMAL_COLORS.cream} /> : null}
+            <PreviewRow
+              label="IN YOUR WALLET"
+              value={isStake ? (requiresApproval ? '1 APPROVE  ·  2 STAKE' : '1 STAKE') : '1 UNSTAKE'}
+            />
+          </View>
+        </View>
+      ) : null}
 
       {txError ? (
-        <View style={[styles.notice, { borderLeftColor: THERMAL_COLORS.red }]}>
-          <Text style={[TYPE.label10, { color: THERMAL_COLORS.red }]}>TRANSACTION FAILED</Text>
-          <Text style={TYPE.body13}>{txError}</Text>
+        <View style={styles.notice}>
+          <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>TRANSACTION FAILED</Text>
+          <Text style={[TYPE.body14, { color: INK.muted }]}>{txError}</Text>
         </View>
       ) : null}
     </ThermalSheet>
   );
 }
 
+/** Balance box; the one the current mode spends from gets a white stroke */
 function Balance({ label, value, highlight }: { label: string; value: string; highlight: boolean }) {
   return (
-    <View style={[styles.balance, highlight && { borderLeftColor: THERMAL_COLORS.orange }]}>
-      <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>{label}</Text>
-      <Text style={TYPE.display32}>{value}</Text>
+    <View style={{ flex: 1 }}>
+      <HardShadow />
+      <View style={[styles.balance, { borderColor: highlight ? THERMAL_COLORS.white : THERMAL_COLORS.border }]}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>{label}</Text>
+        <Text style={TYPE.display24}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PreviewRow({ label, value, color = THERMAL_COLORS.white }: { label: string; value: string; color?: string }) {
+  return (
+    <View style={styles.between}>
+      <Text style={[TYPE.label12, { color: INK.muted }]}>{label}</Text>
+      <Text style={[TYPE.meta18, { color }]}>{value}</Text>
     </View>
   );
 }
@@ -200,14 +230,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  between: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   balance: {
-    flex: 1,
     gap: 4,
-    paddingVertical: SPACE.rowY,
-    paddingHorizontal: SPACE.rowX,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderLeftWidth: 3,
-    borderLeftColor: 'rgba(255,255,255,0.12)',
+    padding: 12,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
   },
   input: {
     flexDirection: 'row',
@@ -215,8 +247,14 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: SPACE.panel,
     paddingVertical: 8,
-    backgroundColor: THERMAL_COLORS.panel,
-    borderWidth: 2,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
+  },
+  preview: {
+    gap: 8,
+    padding: 12,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
     borderColor: THERMAL_COLORS.border,
   },
   inputText: {
@@ -227,7 +265,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: SPACE.rowY,
     paddingHorizontal: SPACE.rowX,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderLeftWidth: 3,
+    borderWidth: SIZE.stroke,
+    borderColor: STATUS_COLORS.negative.stroke,
   },
 });
