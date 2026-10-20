@@ -141,7 +141,7 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
       <FloatingArt profile={profile} centerX={centerX} />
       <Crosshair centerX={centerX} />
       <ThermalScale levelIndex={heat.current.level - 1} />
-      <YouCallout shu={heat.shu} levelIndex={heat.current.level - 1} centerX={centerX} />
+      <YouCallout shu={heat.shu} levelIndex={heat.current.level - 1} />
 
       <View style={styles.readout}>
         <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT · SCOVILLE READING</Text>
@@ -201,13 +201,13 @@ function Crosshair({ centerX }: { centerX: number }) {
  * back toward the camera art: it steps down to the tag when the tag is below
  * the art (as in Figma) and up to it when the tag is above.
  */
-function YouCallout({ shu, levelIndex, centerX }: { shu: number; levelIndex: number; centerX: number }) {
+function YouCallout({ shu, levelIndex }: { shu: number; levelIndex: number }) {
   const level = LEVEL_LIST[levelIndex];
   const top = levelLabelTop(levelIndex) - CALLOUT_OFFSET;
   const isBelowArt = top + CALLOUT_HEIGHT / 2 > ART_CENTER_Y;
 
   return (
-    <View pointerEvents="none" style={[styles.callout, { top, left: centerX - LEADER_INSET }]}>
+    <View pointerEvents="none" style={[styles.callout, { top, right: CALLOUT_RIGHT }]}>
       <View style={isBelowArt ? styles.leaderDown : styles.leaderUp}>
         <PixelArt name="leader" />
       </View>
@@ -557,8 +557,8 @@ const SCALE_BOTTOM_LABEL_TOP = 412;
 /** Callout box top sits 10pt above its level label; box is ~42pt tall */
 const CALLOUT_OFFSET = 10;
 const CALLOUT_HEIGHT = 42;
-/** Leader starts 4pt left of the art centre (Figma x 181 vs centre 185) */
-const LEADER_INSET = 4;
+/** Tag hugs the thermal scale: its right edge stops 8pt before the scale cells */
+const CALLOUT_RIGHT = 24;
 /** Rising leader (tag above the art) sits lower so it meets the box's lower edge */
 const LEADER_UP_TOP = 18;
 /** Scale level labels (Figma: 55% white) */
