@@ -21,7 +21,7 @@ import { ShapeBackdrop } from '../components/shape-backdrop';
 import { NavIconButton } from '../components/thermal-nav-bar';
 import { HEAT_LEVELS } from '../lib/heat-levels';
 import type { BackdropName } from '../lib/onboarding-backdrops';
-import { stepIn, stepOut } from '../motion';
+import { fadeIn, fadeOut } from '../motion';
 import { INK, SIZE, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 
 interface OnboardingScreenProps {
@@ -78,9 +78,10 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
       <Fades width={width} height={height} />
 
       <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}>
+        {/* Fixed top bar: the progress bar sits centred and never moves between steps */}
         <View style={styles.top}>
-          {index > 0 ? <NavIconButton icon="back" onPress={handleBack} /> : null}
-          <View style={styles.progress}>
+          <View style={styles.topSide}>{index > 0 ? <NavIconButton icon="back" onPress={handleBack} /> : null}</View>
+          <View pointerEvents="none" style={styles.progress}>
             {STEPS.map((item, stepIndex) => (
               <View
                 key={item.title}
@@ -88,16 +89,19 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
               />
             ))}
           </View>
-          {isLast ? null : (
-            <Touchable onPress={handleSkip} hitSlop={10} pressedOpacity={0.7} style={styles.skip}>
-              <Text style={TYPE.label12}>{'SKIP >'}</Text>
-            </Touchable>
-          )}
+          <View style={[styles.topSide, { alignItems: 'flex-end' }]}>
+            {isLast ? null : (
+              <Touchable onPress={handleSkip} hitSlop={12} pressedOpacity={0.7}>
+                <Text style={TYPE.label12}>{'SKIP >'}</Text>
+              </Touchable>
+            )}
+          </View>
         </View>
 
         <View style={{ flex: 1 }} />
 
-        <Animated.View key={step.title} entering={stepIn()} exiting={stepOut()} style={styles.step}>
+        {/* Content swaps in place (cross-fade), it doesn't slide to a new page */}
+        <Animated.View key={step.title} entering={fadeIn()} exiting={fadeOut()} style={styles.step}>
           <Mascot rank={step.mascot} />
 
           {step.kind === 'wallet' ? (
@@ -305,6 +309,8 @@ const MASCOT_SIZE = 190;
 const TOP_FADE = 120;
 /** Upcoming progress cells (Figma: 20% white) */
 const PROGRESS_TODO = 'rgba(255,255,255,0.2)';
+/** Four 57pt cells + 4pt gaps = the 240pt centred bar in Figma */
+const PROGRESS_CELL = 57;
 
 /** Onboarding body copy sits at 70% (Figma) */
 const INK_BODY = 'rgba(255,255,255,0.7)';
@@ -321,26 +327,27 @@ const styles = StyleSheet.create({
     gap: SPACE.section,
   },
   top: {
+    height: SIZE.navButton,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    minHeight: 36,
+    justifyContent: 'space-between',
+  },
+  topSide: {
+    width: SIZE.navButton + 16,
+    justifyContent: 'center',
   },
   progress: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignSelf: 'center',
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: 4,
   },
   progressCell: {
-    flex: 1,
+    width: PROGRESS_CELL,
     height: 6,
-  },
-  skip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    backgroundColor: THERMAL_COLORS.void,
-    borderWidth: SIZE.stroke,
-    borderColor: THERMAL_COLORS.border,
   },
   step: {
     alignItems: 'center',

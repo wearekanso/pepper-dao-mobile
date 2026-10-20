@@ -30,6 +30,12 @@ interface PixelCoreProps {
   gridOffsetY?: number;
   /** Backdrop colour at a stage point (flip variant) */
   sampleColor?: (x: number, y: number) => string;
+  /**
+   * Flip variant only: how far a stage point is from where the wave starts.
+   * Defaults to the straight distance from (centerX, centerY), i.e. round
+   * rings; pass a shape's distance field to make the wave follow that shape.
+   */
+  distanceAt?: (x: number, y: number) => number;
 }
 
 export type PixelCoreVariant = 'flicker' | 'ripple' | 'embers' | 'spread' | 'lift' | 'heartbeat' | 'shockwave' | 'heatwave' | 'flip';
@@ -51,8 +57,8 @@ export const PIXEL_CORE_VARIANTS: Array<{ value: PixelCoreVariant; label: string
  * noise. Two differently-seeded frames cross-fade so the core flickers like
  * a live thermal reading.
  */
-export function PixelCore({ variant = 'flicker', gridOffsetY = 0, sampleColor = sampleNothing, ...props }: PixelCoreProps) {
-  if (variant === 'flip') return <FlipCore {...props} gridOffsetY={gridOffsetY} sampleColor={sampleColor} />;
+export function PixelCore({ variant = 'flicker', gridOffsetY = 0, sampleColor = sampleNothing, distanceAt, ...props }: PixelCoreProps) {
+  if (variant === 'flip') return <FlipCore {...props} gridOffsetY={gridOffsetY} sampleColor={sampleColor} distanceAt={distanceAt} />;
   if (variant === 'ripple') return <RippleCore {...props} />;
   if (variant === 'embers') return <EmberCore {...props} />;
   if (variant === 'spread') return <SpreadCore {...props} />;
@@ -63,7 +69,7 @@ export function PixelCore({ variant = 'flicker', gridOffsetY = 0, sampleColor = 
   return <FlickerCore {...props} />;
 }
 
-type CoreProps = Omit<PixelCoreProps, 'variant' | 'gridOffsetY' | 'sampleColor'>;
+type CoreProps = Omit<PixelCoreProps, 'variant' | 'gridOffsetY' | 'sampleColor' | 'distanceAt'>;
 
 function sampleNothing(): string {
   return THERMAL_COLORS.magenta;
@@ -298,7 +304,12 @@ function FlipCore({
   centerY,
   gridOffsetY,
   sampleColor,
-}: CoreProps & { gridOffsetY: number; sampleColor: (x: number, y: number) => string }) {
+  distanceAt,
+}: CoreProps & {
+  gridOffsetY: number;
+  sampleColor: (x: number, y: number) => string;
+  distanceAt?: (x: number, y: number) => number;
+}) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -306,8 +317,8 @@ function FlipCore({
   }, [progress]);
 
   const { groups, travel } = useMemo(
-    () => buildFlipGroups(width, height, centerX, centerY, gridOffsetY, sampleColor),
-    [width, height, centerX, centerY, gridOffsetY, sampleColor],
+    () => buildFlipGroups(width, height, centerX, centerY, gridOffsetY, sampleColor, distanceAt),
+    [width, height, centerX, centerY, gridOffsetY, sampleColor, distanceAt],
   );
 
   return (
@@ -390,6 +401,7 @@ function buildFlipGroups(
   centerY: number,
   gridOffsetY: number,
   sampleColor: (x: number, y: number) => string,
+  distanceAt?: (x: number, y: number) => number,
 ) {
   const groups = new Map<string, FlipGroupData>();
   let maxRadius = 0;
@@ -400,7 +412,7 @@ function buildFlipGroups(
       const cx = x + CELL / 2;
       const cy = y + CELL / 2;
       const distance = Math.hypot(cx - centerX, cy - centerY);
-      const radius = Math.round(distance / CELL) * CELL;
+      const radius = Math.round((distanceAt ? distanceAt(cx, cy) : distance) / CELL) * CELL;
       maxRadius = Math.max(maxRadius, radius);
 
       // Unit vector pointing away from the hotspot (any direction at the very centre)

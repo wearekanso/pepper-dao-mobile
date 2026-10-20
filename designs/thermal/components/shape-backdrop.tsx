@@ -34,7 +34,9 @@ interface ShapeBackdropProps {
  * Onboarding backdrop: a Figma heat shape (six blurred pixel bands on the
  * sensor grid, pre-rendered from Figma) animated exactly like the Power heat camera — every band
  * breathes like the Power backdrop's heat blobs, and the 09 FLIP pixel wave
- * rolls out of the hottest band, taking its colours from the shape.
+ * rolls out of the hottest band, taking its colours from the shape. The
+ * wave front follows the shape (a distance field from the hottest band),
+ * so it spreads as a growing heartbeat / check / bolt / wave, not a circle.
  * Switching shape cross-fades with the shared fade tokens.
  */
 export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
@@ -49,6 +51,17 @@ export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
   }, [shape, waveShape]);
   const bands = useMemo(() => BACKDROP_SHAPES[waveShape].bands.map(buildBand), [waveShape]);
   const hotspot = bands[bands.length - 1].center;
+  const distanceField = useMemo(() => buildDistanceField(bands[bands.length - 1]), [bands]);
+
+  // Distance from the hottest band, so the wave front takes the shape's outline
+  const distanceAt = useCallback(
+    (x: number, y: number) => {
+      const column = Math.min(GRID_COLUMNS - 1, Math.max(0, Math.floor(x / scale / CELL)));
+      const row = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(y / scale / CELL)));
+      return distanceField[row * GRID_COLUMNS + column] * scale;
+    },
+    [distanceField, scale],
+  );
 
   // Same lookup the FLIP faces use on Power: colour of the hottest band under a point
   const sampleColor = useCallback(
@@ -90,6 +103,7 @@ export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
         centerX={hotspot.x * scale}
         centerY={hotspot.y * scale}
         sampleColor={sampleColor}
+        distanceAt={distanceAt}
         variant="flip"
       />
       <SensorGrid width={width} height={height} />
@@ -166,11 +180,62 @@ function buildBand(runs: Array<number>): Band {
   };
 }
 
+/**
+ * Chamfer distance (10 straight, 14 diagonal) from every grid cell to the
+ * nearest cell of `band`, in Figma points. Two passes over the 10pt grid.
+ */
+function buildDistanceField(band: Band): Float32Array {
+  const field = new Float32Array(GRID_COLUMNS * GRID_ROWS).fill(Infinity);
+
+  for (const [y, runs] of band.rows) {
+    const row = y / CELL;
+    if (row < 0 || row >= GRID_ROWS) continue;
+    for (const [x0, x1] of runs) {
+      for (let column = Math.max(0, Math.floor(x0 / CELL)); column < Math.min(GRID_COLUMNS, Math.ceil(x1 / CELL)); column++) {
+        field[row * GRID_COLUMNS + column] = 0;
+      }
+    }
+  }
+
+  const relax = (index: number, neighbour: number, cost: number) => {
+    if (field[neighbour] + cost < field[index]) field[index] = field[neighbour] + cost;
+  };
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let column = 0; column < GRID_COLUMNS; column++) {
+      const index = row * GRID_COLUMNS + column;
+      if (column > 0) relax(index, index - 1, STRAIGHT);
+      if (row > 0) {
+        relax(index, index - GRID_COLUMNS, STRAIGHT);
+        if (column > 0) relax(index, index - GRID_COLUMNS - 1, DIAGONAL);
+        if (column < GRID_COLUMNS - 1) relax(index, index - GRID_COLUMNS + 1, DIAGONAL);
+      }
+    }
+  }
+  for (let row = GRID_ROWS - 1; row >= 0; row--) {
+    for (let column = GRID_COLUMNS - 1; column >= 0; column--) {
+      const index = row * GRID_COLUMNS + column;
+      if (column < GRID_COLUMNS - 1) relax(index, index + 1, STRAIGHT);
+      if (row < GRID_ROWS - 1) {
+        relax(index, index + GRID_COLUMNS, STRAIGHT);
+        if (column < GRID_COLUMNS - 1) relax(index, index + GRID_COLUMNS + 1, DIAGONAL);
+        if (column > 0) relax(index, index + GRID_COLUMNS - 1, DIAGONAL);
+      }
+    }
+  }
+  return field;
+}
+
 const FIGMA_WIDTH = 402;
+const FIGMA_HEIGHT = 874;
 /** The flip wave only runs over the top of the screen; below it the copy sits on the dark fade */
 const WAVE_AREA = 0.62;
 /** Figma pixel-run height: the 10pt sensor grid */
 const CELL = 10;
+const GRID_COLUMNS = Math.ceil(FIGMA_WIDTH / CELL) + 1;
+const GRID_ROWS = Math.ceil(FIGMA_HEIGHT / CELL);
+/** Chamfer steps between neighbouring cells, in points */
+const STRAIGHT = CELL;
+const DIAGONAL = 14;
 
 /*
  * Breathing timing — identical to ThermalBackground's HeatBlob so the
