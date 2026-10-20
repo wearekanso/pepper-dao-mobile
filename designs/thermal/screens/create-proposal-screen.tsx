@@ -160,7 +160,7 @@ export function CreateProposalScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={[styles.content, { paddingTop: TOP_SPACE + NAV_BAR_HEIGHT + 12, paddingBottom: footerSpace }]}
+          contentContainerStyle={[styles.content, { paddingTop: insets.top + NAV_BAR_HEIGHT + 12, paddingBottom: footerSpace }]}
         >
           <View style={{ gap: 6 }}>
             <Text style={TYPE.display32}>NEW PROPOSAL</Text>
@@ -225,7 +225,6 @@ export function CreateProposalScreen() {
         icon="close"
         onBack={handleCancel}
         scrollY={scrollY}
-        topInset={TOP_SPACE}
       />
 
       {isBlocked ? null : (
@@ -659,8 +658,6 @@ function formatCount(value: number): string {
 }
 
 const STAGES = ['BASICS', 'DETAILS', 'REVIEW'] as const;
-/** The route is presented as a modal card (see app/_layout.tsx), so the status bar is not above us */
-const TOP_SPACE = 8;
 const NOT_ELIGIBLE_CELLS = 20;
 /** Upcoming stepper segments (Figma: 25% white) */
 const STEP_TODO = 'rgba(255,255,255,0.25)';

@@ -214,7 +214,9 @@ export default function RootLayout() {
                         <Stack.Screen
                           name="governance/create"
                           options={{
-                            presentation: 'modal',
+                            // Full-screen page (Figma: status bar + close nav bar), not a card sheet
+                            presentation: IS_THERMAL ? 'fullScreenModal' : 'modal',
+                            animation: IS_THERMAL ? 'slide_from_bottom' : undefined,
                             headerShown: false,
                           }}
                         />
