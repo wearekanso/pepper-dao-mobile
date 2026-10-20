@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,10 +17,10 @@ import type { Rank } from '@/types/user';
 import { DashedDivider, Touchable } from '../components/atoms';
 import { HardShadow } from '../components/panel';
 import { PixelButton } from '../components/pixel-button';
-import { PixelCore } from '../components/pixel-core';
-import { getHeatHotspot, sampleHeatColor, ThermalBackground } from '../components/thermal-background';
+import { ShapeBackdrop } from '../components/shape-backdrop';
 import { NavIconButton } from '../components/thermal-nav-bar';
 import { HEAT_LEVELS } from '../lib/heat-levels';
+import type { BackdropName } from '../lib/onboarding-backdrops';
 import { stepIn, stepOut } from '../motion';
 import { INK, SIZE, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 
@@ -30,10 +30,10 @@ interface OnboardingScreenProps {
 }
 
 /**
- * First-run briefing in four steps over the Power heat camera's backdrop:
- * the same "power" thermal background with the 09 FLIP pixel wave rolling
- * out of its hot spot. The last step links a wallet or lets the user
- * explore as a guest. Figma: "Onboarding · 1–4 · V2".
+ * First-run briefing in four steps, each over its own Figma heat shape
+ * (heartbeat · check · bolt · wave) animated like the Power heat camera.
+ * The last step links a wallet or lets the user explore as a guest.
+ * Figma: "Onboarding · 1–4 · V2".
  */
 export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
@@ -42,9 +42,6 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
   const [index, setIndex] = useState(0);
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
-  // Same backdrop + flip wave as the Power header, full screen
-  const hotspot = getHeatHotspot(BACKDROP, width);
-  const sampleColor = useCallback((x: number, y: number) => sampleHeatColor(BACKDROP, width, x, y), [width]);
 
   useEffect(() => {
     telemetry.track('onboarding_started');
@@ -77,15 +74,7 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
 
   return (
     <View style={styles.root}>
-      <ThermalBackground preset={BACKDROP} />
-      <PixelCore
-        width={width}
-        height={height}
-        centerX={hotspot.x}
-        centerY={hotspot.y}
-        sampleColor={sampleColor}
-        variant="flip"
-      />
+      <ShapeBackdrop shape={step.backdrop} width={width} height={height} />
       <Fades width={width} height={height} />
 
       <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}>
@@ -240,6 +229,8 @@ type StepKind = 'chips' | 'levels' | 'wallet';
 
 interface Step {
   kind: StepKind;
+  /** Figma heat shape behind this step */
+  backdrop: BackdropName;
   mascot: Rank;
   badge: string;
   chips: Array<{ label: string; color: string }>;
@@ -250,6 +241,7 @@ interface Step {
 const STEPS: Array<Step> = [
   {
     kind: 'chips',
+    backdrop: 'heartbeat',
     mascot: 'OBSERVER',
     badge: 'LIVE · DAO TREASURY',
     chips: [
@@ -262,6 +254,7 @@ const STEPS: Array<Step> = [
   },
   {
     kind: 'chips',
+    backdrop: 'check',
     mascot: 'MEMBER',
     badge: 'YOUR VOTE COUNTS',
     chips: [
@@ -274,6 +267,7 @@ const STEPS: Array<Step> = [
   },
   {
     kind: 'levels',
+    backdrop: 'bolt',
     mascot: 'PARTICIPANT',
     badge: '6 HEAT LEVELS',
     chips: [],
@@ -282,6 +276,7 @@ const STEPS: Array<Step> = [
   },
   {
     kind: 'wallet',
+    backdrop: 'wave',
     mascot: 'STEWARD',
     badge: '',
     chips: [],
@@ -306,8 +301,6 @@ const MODES = [
   { title: 'POWER', hint: 'Stake, earn REP, level up', icon: require('@/assets/images/pepper/burn.png') },
 ];
 
-/** The Power screen's thermal preset — its hot spot is where the flip wave starts */
-const BACKDROP = 'power';
 const MASCOT_SIZE = 190;
 const TOP_FADE = 120;
 /** Upcoming progress cells (Figma: 20% white) */
