@@ -214,8 +214,9 @@ export default function RootLayout() {
                         <Stack.Screen
                           name="governance/create"
                           options={{
-                            // Full-screen page (Figma: status bar + close nav bar), not a card sheet
-                            presentation: IS_THERMAL ? 'fullScreenModal' : 'modal',
+                            // Full-screen page (Figma: status bar + close nav bar), not a card sheet.
+                            // A plain stack page, not a native modal, so the wallet picker can open on top
+                            presentation: IS_THERMAL ? 'card' : 'modal',
                             animation: IS_THERMAL ? 'slide_from_bottom' : undefined,
                             headerShown: false,
                           }}
