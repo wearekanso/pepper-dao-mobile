@@ -5,7 +5,7 @@ import Animated, { interpolate, type SharedValue, useAnimatedStyle } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { SIZE, SPACE, THERMAL_COLORS, TYPE } from '../theme';
 import { Touchable } from './atoms';
 
 interface ThermalNavBarProps {
@@ -71,7 +71,7 @@ export function ThermalNavBar({
         </Touchable>
 
         <Animated.View pointerEvents="none" style={[styles.title, titleStyle]}>
-          <Text style={TYPE.label15} numberOfLines={1}>
+          <Text style={TYPE.label14} numberOfLines={1}>
             {title}
           </Text>
         </Animated.View>
@@ -93,7 +93,7 @@ export function ThermalNavBar({
 /** Bar height below the top inset */
 export const NAV_BAR_HEIGHT = 44;
 
-const BUTTON_SIZE = 36;
+const BUTTON_SIZE = SIZE.navButton;
 const TITLE_INSET = 84;
 
 /** Pixel "<" (3pt cells), same as the Figma component */

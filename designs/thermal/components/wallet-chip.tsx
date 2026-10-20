@@ -31,7 +31,7 @@ export function WalletChip() {
       ) : (
         <BlinkDot color={THERMAL_COLORS.red} size={6} period={700} />
       )}
-      <Text style={TYPE.meta16}>{isConnected && address ? shortenAddress(address) : 'CONNECT'}</Text>
+      <Text style={TYPE.meta18}>{isConnected && address ? shortenAddress(address) : 'CONNECT'}</Text>
     </Touchable>
   );
 }

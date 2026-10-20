@@ -5,7 +5,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { PRESS_SINK, usePressFeedback } from '../hooks/use-press-feedback';
 
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { SIZE, THERMAL_COLORS, TYPE } from '../theme';
 import { HardShadow } from './panel';
 
 export type PixelButtonVariant = 'gold' | 'outline' | 'outlineGold' | 'cream' | 'muted' | 'void' | 'paper';
@@ -16,6 +16,7 @@ interface PixelButtonProps {
   variant?: PixelButtonVariant;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Overrides the fixed V2 height (44pt) with vertical padding */
   paddingVertical?: number;
 }
 
@@ -29,7 +30,7 @@ export function PixelButton({
   variant = 'gold',
   disabled = false,
   style,
-  paddingVertical = SPACE.button,
+  paddingVertical,
 }: PixelButtonProps) {
   const config = VARIANTS[variant];
   const { pressed, pressHandlers } = usePressFeedback();
@@ -62,7 +63,9 @@ export function PixelButton({
         style={[
           styles.body,
           {
-            paddingVertical: Math.max(0, paddingVertical - borderWidth),
+            ...(paddingVertical === undefined
+              ? { height: SIZE.button }
+              : { paddingVertical: Math.max(0, paddingVertical - borderWidth) }),
             backgroundColor: config.background,
             borderColor: config.border ?? 'transparent',
             borderWidth,
@@ -70,7 +73,7 @@ export function PixelButton({
           animatedStyle,
         ]}
       >
-        <Text style={[TYPE.label12, { color: config.text }]} numberOfLines={1}>
+        <Text style={[TYPE.label14, { color: config.text }]} numberOfLines={1}>
           {label}
         </Text>
       </Animated.View>
