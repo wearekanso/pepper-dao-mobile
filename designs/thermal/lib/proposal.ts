@@ -1,9 +1,10 @@
 import { getVoteDistribution } from '@/lib/voting-calculations';
 import { deriveVotingTrack, VOTING_TRACK_DURATION_LABELS, type VotingTrack } from '@/lib/voting-tracks';
-import type { GovernanceProposal, GovernanceStatus, VoteOption } from '@/types/governance';
+import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
+import type { GovernanceProposal, GovernanceStatus, ProposalAction, VoteOption } from '@/types/governance';
 
 import { THERMAL_COLORS } from '../theme';
-import { parseDateMs } from './format';
+import { formatCompact, parseDateMs, shortenAddress, tokenToNumber } from './format';
 import type { StatusKind } from '../components/atoms';
 import type { VoteSplit } from '../components/pixel-bar';
 
@@ -120,6 +121,8 @@ export interface ProposalStage {
   label: string;
   /** Compact form for one-line stage strips: "MINISTERS 3/3", "VOTE · LIVE", "EXECUTE" */
   short: string;
+  /** Sentence form for the STEPS card: "Ministers approved · 3/3" */
+  sentence: string;
   detail: string;
   state: StageState;
 }
@@ -137,8 +140,14 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
 
   if (proposal.type === 'ADMIN') {
     return [
-      { label: 'ADMIN ACTION', short: 'ADMIN', detail: 'AUTO-APPROVED', state: 'done' },
-      { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', detail: isExecuted ? 'DONE' : 'QUEUED', state: isExecuted ? 'done' : 'live' },
+      { label: 'ADMIN ACTION', short: 'ADMIN', sentence: 'Admin action · auto-approved', detail: 'AUTO-APPROVED', state: 'done' },
+      {
+        label: 'EXECUTION ON-CHAIN',
+        short: 'EXECUTE',
+        sentence: isExecuted ? 'Executed on-chain' : 'Execution on-chain · queued',
+        detail: isExecuted ? 'DONE' : 'QUEUED',
+        state: isExecuted ? 'done' : 'live',
+      },
     ];
   }
 
@@ -146,6 +155,7 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
   const ministers: ProposalStage = {
     label: 'SPICY MINISTERS',
     short: `MINISTERS ${approvals}/${minApprovals}`,
+    sentence: `${proposal.type === 'PEP' ? 'Ministers' : 'Council'} ${MINISTER_VERB[ministersState]} · ${approvals}/${minApprovals}`,
     detail: `${approvals}/${minApprovals} APPROVED`,
     state: ministersState,
   };
@@ -153,7 +163,7 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
   if (proposal.type !== 'PEP') {
     return [
       ministers,
-      { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
+      { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', sentence: EXECUTION_SENTENCE[String(isExecuted)], detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
     ];
   }
 
@@ -169,12 +179,59 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
     {
       label: 'COMMUNITY VOTE',
       short: communityState === 'live' ? 'VOTE · LIVE' : 'VOTE',
+      sentence: COMMUNITY_SENTENCE[communityState],
       detail: communityState === 'live' ? 'LIVE' : communityState === 'done' ? 'PASSED' : communityState === 'failed' ? 'FAILED' : '',
       state: communityState,
     },
-    { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
+    { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', sentence: EXECUTION_SENTENCE[String(isExecuted)], detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
   ];
 }
+
+const MINISTER_VERB: Record<StageState, string> = {
+  done: 'approved',
+  live: 'reviewing',
+  waiting: 'reviewing',
+  failed: 'rejected',
+};
+
+const COMMUNITY_SENTENCE: Record<StageState, string> = {
+  done: 'Community vote · passed',
+  live: 'Community vote · live',
+  waiting: 'Community vote',
+  failed: 'Community vote · failed',
+};
+
+const EXECUTION_SENTENCE: Record<string, string> = {
+  true: 'Executed on-chain',
+  false: 'Execution on-chain',
+};
+
+export interface ActionSummary {
+  title: string;
+  detail: string;
+}
+
+/**
+ * Human line for an on-chain action. Decodes plain ERC-20 transfers of
+ * PEPPER; anything else falls back to "Send N CHZ" / "Contract call".
+ */
+export function getActionSummary(action: ProposalAction): ActionSummary {
+  const data = action.data?.toLowerCase() ?? '';
+  if (action.to.toLowerCase() === PEPPER_TOKEN_ADDRESS.toLowerCase() && data.startsWith(ERC20_TRANSFER) && data.length >= 138) {
+    const recipient = `0x${data.slice(34, 74)}`;
+    const amount = BigInt(`0x${data.slice(74, 138)}`);
+    return { title: `Transfer ${formatCompact(tokenToNumber(amount, 18))} PEPPER`, detail: `to ${shortenAddress(recipient)}` };
+  }
+
+  const value = BigInt(action.value || '0');
+  if (value > BigInt(0)) {
+    return { title: `Send ${formatCompact(tokenToNumber(value, 18))} CHZ`, detail: `to ${shortenAddress(action.to)}` };
+  }
+  return { title: 'Contract call', detail: `on ${shortenAddress(action.to)}` };
+}
+
+/** ERC-20 transfer(address,uint256) selector */
+const ERC20_TRANSFER = '0xa9059cbb';
 
 /** One-line reason under ended proposals, e.g. "Not enough minister approvals · 1/3" */
 export function getEndedNote(proposal: GovernanceProposal): string | null {
