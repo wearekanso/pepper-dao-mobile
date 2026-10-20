@@ -105,20 +105,16 @@ export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
       visible={visible}
       onClose={handleClose}
       locked={isPending}
-      eyebrow="POWER · vePEPPER"
       title={isStake ? 'STAKE PEPPER' : 'UNSTAKE PEPPER'}
       subtitle="Staked PEPPER becomes vePEPPER: your voting power, plus +5 REP every week."
       footer={
-        <>
-          <PixelButton
-            label={submitLabel}
-            variant="gold"
-            disabled={!isValid || isPending}
-            style={{ flex: 1 }}
-            onPress={() => void handleSubmit()}
-          />
-          <PixelButton label="CANCEL" variant="outline" disabled={isPending} onPress={handleClose} />
-        </>
+        <PixelButton
+          label={submitLabel}
+          variant="gold"
+          disabled={!isValid || isPending}
+          style={{ flex: 1 }}
+          onPress={() => void handleSubmit()}
+        />
       }
     >
       <View style={styles.row}>

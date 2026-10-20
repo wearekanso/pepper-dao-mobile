@@ -48,15 +48,9 @@ export function HowToEarnSheet({ visible, profile, onClose }: HowToEarnSheetProp
     <ThermalSheet
       visible={visible}
       onClose={onClose}
-      eyebrow="FIELD GUIDE · HEAT"
       title="HOW TO EARN HEAT"
       subtitle="Every action adds REP. REP turns up your SHU."
-      footer={
-        <>
-          <PixelButton label="FIND A LIVE VOTE >" variant="gold" style={{ flex: 1 }} onPress={findVote} />
-          <PixelButton label="GOT IT" variant="outline" onPress={onClose} />
-        </>
-      }
+      footer={<PixelButton label="FIND A LIVE VOTE >" variant="gold" style={{ flex: 1 }} onPress={findVote} />}
     >
       <View style={styles.you}>
         <HeatPepper level={heat.current} width={18} />

@@ -61,7 +61,6 @@ function WalletPickerSheet({ visible, onClose }: WalletPickerSheetProps) {
     <ThermalSheet
       visible={visible}
       onClose={onClose}
-      eyebrow="WALLET · CHILIZ CHAIN"
       title="CONNECT WALLET"
       subtitle="Pick the wallet that holds your PEPPER."
       footer={<PixelButton label="ALL WALLETS · QR CODE" variant="outline" style={{ flex: 1 }} onPress={() => void openReown('AllWallets')} />}

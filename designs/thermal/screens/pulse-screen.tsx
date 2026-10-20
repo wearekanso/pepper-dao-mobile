@@ -202,7 +202,6 @@ export function PulseScreen() {
       <InfoSheet
         visible={modal === 'treasuryInfo'}
         onClose={() => setModal(null)}
-        eyebrow="LIVE · TREASURY"
         title="DAO TREASURY"
         message="These funds are managed by the PEPPER community through voting. Every penny spent is visible on-chain."
         address={TREASURY_ADDRESS}
@@ -210,7 +209,6 @@ export function PulseScreen() {
       <InfoSheet
         visible={modal === 'staked'}
         onClose={() => setModal(null)}
-        eyebrow="READOUT · STAKED"
         title="STAKED PEPPER"
         message="The total amount of PEPPER locked as vePEPPER. Staked PEPPER is what powers governance votes."
         address={STAKING_ADDRESS}
@@ -218,7 +216,6 @@ export function PulseScreen() {
       <InfoSheet
         visible={modal === 'cex'}
         onClose={() => setModal(null)}
-        eyebrow="READOUT · CEX FUND"
         title="CEX FUND"
         message="The CEX Fund will be used to secure a Tier 1 Centralized Exchange listing for PEPPER. If the funds raised are insufficient after 90 days, they will be returned to the PEPPER Treasury to be managed by the community."
         address={CEX_FUND_ADDRESS}

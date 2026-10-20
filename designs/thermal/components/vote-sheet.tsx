@@ -8,7 +8,7 @@ import type { GovernanceProposal, VoteOption } from '@/types/governance';
 import { castDemoVote, DEMO_VOTING_POWER, isDemoProposalId } from '../lib/demo-vote';
 import { shortenKey } from '../lib/format';
 import { getProposalTitle } from '../lib/proposal';
-import { SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
+import { INK, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 import { DashedDivider, Touchable } from './atoms';
 import { HardShadow } from './panel';
 import { PixelButton } from './pixel-button';
@@ -62,21 +62,22 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
       visible={visible}
       onClose={onClose}
       locked={isPending}
-      eyebrow={`${isDemo ? 'TEST VOTE' : 'CAST YOUR VOTE'} · ${shortenKey(proposal.key)}`}
-      title={getProposalTitle(proposal)}
+      title={isDemo ? 'TEST VOTE' : 'CAST YOUR VOTE'}
       footer={
-        <>
-          <PixelButton
-            label={isPending ? 'SIGN IN YOUR WALLET…' : selected ? `VOTE ${selected} >` : 'PICK AN OPTION'}
-            variant="gold"
-            disabled={!selected || isPending}
-            style={{ flex: 1 }}
-            onPress={() => void handleSubmit()}
-          />
-          <PixelButton label="CANCEL" variant="outline" disabled={isPending} onPress={onClose} />
-        </>
+        <PixelButton
+          label={isPending ? 'SIGN IN YOUR WALLET…' : selected ? `VOTE ${selected} >` : 'PICK AN OPTION'}
+          variant="gold"
+          disabled={!selected || isPending}
+          style={{ flex: 1 }}
+          onPress={() => void handleSubmit()}
+        />
       }
     >
+      <View style={{ gap: 4 }}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>{`COMMUNITY VOTE · ${shortenKey(proposal.key)}`}</Text>
+        <Text style={TYPE.display24}>{getProposalTitle(proposal)}</Text>
+      </View>
+
       <View style={styles.power}>
         <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>YOUR VOTING POWER</Text>
         <Text style={TYPE.meta18}>{isLoading ? 'READING…' : `${formattedVotingPower} vePEPPER`}</Text>

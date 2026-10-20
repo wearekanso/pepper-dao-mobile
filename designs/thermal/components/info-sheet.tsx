@@ -16,7 +16,6 @@ import { SheetSection, ThermalSheet } from './thermal-sheet';
 interface InfoSheetProps {
   visible: boolean;
   onClose: () => void;
-  eyebrow: string;
   title: string;
   message: string;
   /** Contract / wallet the readout comes from — tap to copy */
@@ -27,7 +26,7 @@ interface InfoSheetProps {
  * Explainer sheet for a readout (treasury, staking, CEX fund): what it is,
  * plus the on-chain address with copy and explorer shortcuts.
  */
-export function InfoSheet({ visible, onClose, eyebrow, title, message, address }: InfoSheetProps) {
+export function InfoSheet({ visible, onClose, title, message, address }: InfoSheetProps) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -54,15 +53,11 @@ export function InfoSheet({ visible, onClose, eyebrow, title, message, address }
     <ThermalSheet
       visible={visible}
       onClose={onClose}
-      eyebrow={eyebrow}
       title={title}
       footer={
-        <>
-          {address ? (
-            <PixelButton label="VIEW ON CHILISCAN >" variant="gold" style={{ flex: 1 }} onPress={() => void handleExplorer()} />
-          ) : null}
-          <PixelButton label="GOT IT" variant="outline" style={address ? undefined : { flex: 1 }} onPress={onClose} />
-        </>
+        address ? (
+          <PixelButton label="VIEW ON CHILISCAN >" variant="gold" style={{ flex: 1 }} onPress={() => void handleExplorer()} />
+        ) : undefined
       }
     >
       <Text style={TYPE.body14}>{message}</Text>

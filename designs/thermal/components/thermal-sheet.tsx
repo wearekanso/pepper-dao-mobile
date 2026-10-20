@@ -13,33 +13,32 @@ import {
 } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { DURATION, TIMING } from '../motion';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
-import { Touchable } from './atoms';
+import { INK, SIZE, SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { NavIconButton } from './thermal-nav-bar';
 
 interface ThermalSheetProps {
   visible: boolean;
   onClose: () => void;
-  /** Small label next to the orange square, e.g. "FIELD GUIDE · HEAT" */
-  eyebrow: string;
-  /** Large Jersey title at the top of the scroll content */
-  title?: string;
+  /** Centered Tiny5 title in the sheet's nav bar, e.g. "STAKE PEPPER" */
+  title: string;
+  /** Intro paragraph at the top of the body */
   subtitle?: string;
   children: ReactNode;
-  /** Sticky action row pinned to the bottom (buttons) */
+  /** Pinned below the body — V2 puts only the primary button here */
   footer?: ReactNode;
   /** Blocks closing while a transaction is in flight */
   locked?: boolean;
 }
 
 /**
- * The one sheet used for every overlay in the thermal design (info, lists,
- * forms). Slides up once without bounce; drag the top edge down, tap the
- * scrim or the X to close. Content scrolls under a sticky footer.
+ * V2 "S2" sheet used for every overlay in the thermal design: 2pt white
+ * top line, a nav bar (square close button, centered title), a scrolling
+ * body and a pinned footer. Slides up once without bounce; drag the nav bar
+ * down, tap the scrim or the close button to dismiss.
  */
-export function ThermalSheet({ visible, onClose, eyebrow, title, subtitle, children, footer, locked = false }: ThermalSheetProps) {
+export function ThermalSheet({ visible, onClose, title, subtitle, children, footer, locked = false }: ThermalSheetProps) {
   const [isMounted, setIsMounted] = useState(visible);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -87,8 +86,6 @@ export function ThermalSheet({ visible, onClose, eyebrow, title, subtitle, child
 
   if (!isMounted) return null;
 
-  const footerSpace = footer ? FOOTER_HEIGHT + insets.bottom + 8 : insets.bottom + 24;
-
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={requestClose}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrimStyle]}>
@@ -101,38 +98,25 @@ export function ThermalSheet({ visible, onClose, eyebrow, title, subtitle, child
         pointerEvents="box-none"
       >
         <Animated.View style={[styles.sheet, { maxHeight: height - insets.top - 24 }, sheetStyle]}>
-          <View {...panResponder.panHandlers}>
-            <HeatStrip />
-            <View style={styles.header}>
-              <View style={styles.eyebrow}>
-                <View style={{ width: 8, height: 8, backgroundColor: THERMAL_COLORS.orange }} />
-                <Text style={[TYPE.label10, { color: THERMAL_COLORS.cream, opacity: 0.6 }]}>{eyebrow}</Text>
-              </View>
-              <Touchable onPress={requestClose} hitSlop={12} style={[styles.close, locked && { opacity: 0.3 }]}>
-                <Text style={TYPE.label12}>X</Text>
-              </Touchable>
-            </View>
+          <View {...panResponder.panHandlers} style={styles.nav}>
+            <NavIconButton icon="close" onPress={requestClose} disabled={locked} />
+            <Text style={[TYPE.label14, styles.title]} numberOfLines={1}>
+              {title}
+            </Text>
+            <View style={styles.navSpacer} />
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[styles.content, { paddingBottom: footerSpace }]}
+            contentContainerStyle={[styles.content, !footer && { paddingBottom: insets.bottom + 24 }]}
           >
-            {title ? (
-              <View style={{ gap: 6 }}>
-                <Text style={TYPE.display40}>{title}</Text>
-                {subtitle ? <Text style={TYPE.body13}>{subtitle}</Text> : null}
-              </View>
-            ) : null}
+            {subtitle ? <Text style={TYPE.body14}>{subtitle}</Text> : null}
             {children}
           </ScrollView>
 
           {footer ? (
-            <View pointerEvents="box-none" style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-              <FooterFade />
-              <View style={styles.footerButtons}>{footer}</View>
-            </View>
+            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>{footer}</View>
           ) : null}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -144,48 +128,12 @@ export function ThermalSheet({ visible, onClose, eyebrow, title, subtitle, child
 export function SheetSection({ label, right, rightColor }: { label: string; right?: string; rightColor?: string }) {
   return (
     <View style={styles.section}>
-      <Text style={[TYPE.label10, { opacity: 0.6 }]}>{label}</Text>
-      {right ? <Text style={[TYPE.meta16, rightColor ? { color: rightColor } : { opacity: 0.6 }]}>{right}</Text> : null}
+      <Text style={[TYPE.label12, { color: INK.muted }]}>{label}</Text>
+      {right ? <Text style={[TYPE.meta18, { color: rightColor ?? INK.muted }]}>{right}</Text> : null}
     </View>
   );
 }
 
-function HeatStrip() {
-  return (
-    <View style={styles.strip}>
-      {STRIP.map((color, index) => (
-        <View key={index} style={{ flex: 1, height: 3, backgroundColor: color }} />
-      ))}
-    </View>
-  );
-}
-
-function FooterFade() {
-  const { width } = useWindowDimensions();
-  // Wrapped so react-native-svg never intercepts taps meant for the buttons
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Svg width={width} height={FOOTER_HEIGHT + 60}>
-        <Defs>
-          <LinearGradient id="sheet-footer" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
-            <Stop offset="0.3" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
-            <Stop offset="1" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width={width} height={FOOTER_HEIGHT + 60} fill="url(#sheet-footer)" />
-      </Svg>
-    </View>
-  );
-}
-
-const STRIP = [
-  THERMAL_COLORS.cream, THERMAL_COLORS.gold, THERMAL_COLORS.gold, THERMAL_COLORS.orange, THERMAL_COLORS.orange,
-  THERMAL_COLORS.orange, THERMAL_COLORS.red, THERMAL_COLORS.red, THERMAL_COLORS.orange, THERMAL_COLORS.orange,
-  THERMAL_COLORS.orange, THERMAL_COLORS.gold, THERMAL_COLORS.gold, THERMAL_COLORS.cream, THERMAL_COLORS.cream,
-];
-
-const FOOTER_HEIGHT = 74;
 const DISMISS_DISTANCE = 120;
 
 const styles = StyleSheet.create({
@@ -198,35 +146,31 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: THERMAL_COLORS.void,
-    borderTopWidth: 2,
-    borderTopColor: THERMAL_COLORS.border,
+    borderTopWidth: SIZE.stroke,
+    borderTopColor: THERMAL_COLORS.white,
   },
-  strip: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  header: {
+  nav: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACE.margin,
-    paddingTop: 16,
+    paddingVertical: 12,
+    borderBottomWidth: SIZE.stroke,
+    borderBottomColor: THERMAL_COLORS.borderSoft,
   },
-  eyebrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 8,
   },
-  close: {
-    borderWidth: 2,
-    borderColor: THERMAL_COLORS.border,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  navSpacer: {
+    width: SIZE.navButton,
   },
   content: {
     paddingHorizontal: SPACE.margin,
     paddingTop: 16,
-    gap: SPACE.section,
+    paddingBottom: 12,
+    gap: 14,
   },
   section: {
     flexDirection: 'row',
@@ -234,15 +178,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingTop: 24,
-    paddingHorizontal: SPACE.margin,
-  },
-  footerButtons: {
     flexDirection: 'row',
     gap: 12,
+    paddingTop: 4,
+    paddingHorizontal: SPACE.margin,
   },
 });

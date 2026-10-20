@@ -59,15 +59,9 @@ export function TreasurySheet({ visible, onClose, address }: TreasurySheetProps)
     <ThermalSheet
       visible={visible}
       onClose={onClose}
-      eyebrow="LIVE · TREASURY"
       title="TREASURY ACTIVITY"
       subtitle="Every CHZ moving in or out of the DAO treasury. Managed by vote."
-      footer={
-        <>
-          <PixelButton label="VIEW ON CHILISCAN >" variant="gold" style={{ flex: 1 }} onPress={() => void handleExplorer()} />
-          <PixelButton label="CLOSE" variant="outline" onPress={onClose} />
-        </>
-      }
+      footer={<PixelButton label="VIEW ON CHILISCAN >" variant="gold" style={{ flex: 1 }} onPress={() => void handleExplorer()} />}
     >
       <View style={styles.filters}>
         {WINDOWS.map((item) => (

@@ -54,21 +54,7 @@ export function ThermalNavBar({
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.fill, fillStyle]} />
 
       <View pointerEvents="box-none" style={styles.row}>
-        <Touchable
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onBack();
-          }}
-          hitSlop={4}
-          pressedOpacity={0.6}
-          accessibilityRole="button"
-          accessibilityLabel={icon === 'close' ? 'Close' : 'Back'}
-          style={styles.button}
-        >
-          <Svg width={9} height={icon === 'close' ? 9 : 15} viewBox={icon === 'close' ? '0 0 9 9' : '0 0 9 15'}>
-            <Path d={icon === 'close' ? CLOSE_PATH : CHEVRON_PATH} fill={THERMAL_COLORS.white} />
-          </Svg>
-        </Touchable>
+        <NavIconButton icon={icon} onPress={onBack} />
 
         <Animated.View pointerEvents="none" style={[styles.title, titleStyle]}>
           <Text style={TYPE.label14} numberOfLines={1}>
@@ -87,6 +73,34 @@ export function ThermalNavBar({
         </View>
       </View>
     </View>
+  );
+}
+
+interface NavIconButtonProps {
+  icon: 'back' | 'close';
+  onPress: () => void;
+  disabled?: boolean;
+}
+
+/** 36pt square back / close button shared by the nav bar and sheets */
+export function NavIconButton({ icon, onPress, disabled = false }: NavIconButtonProps) {
+  return (
+    <Touchable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
+      disabled={disabled}
+      hitSlop={4}
+      pressedOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel={icon === 'close' ? 'Close' : 'Back'}
+      style={[styles.button, disabled && { opacity: 0.3 }]}
+    >
+      <Svg width={9} height={icon === 'close' ? 9 : 15} viewBox={icon === 'close' ? '0 0 9 9' : '0 0 9 15'}>
+        <Path d={icon === 'close' ? CLOSE_PATH : CHEVRON_PATH} fill={THERMAL_COLORS.white} />
+      </Svg>
+    </Touchable>
   );
 }
 
