@@ -59,10 +59,11 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
     setIndex((previous) => Math.max(previous - 1, 0));
   }
 
+  /** SKIP jumps to the last step (wallet / guest choice) instead of leaving onboarding */
   function handleSkip() {
     void Haptics.selectionAsync();
     telemetry.track('onboarding_skipped', { skippedAtStep: index + 1 });
-    onSkip();
+    setIndex(STEPS.length - 1);
   }
 
   /** The wallet step replaces the separate post-onboarding wallet prompt */
