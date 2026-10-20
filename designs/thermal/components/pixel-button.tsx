@@ -8,7 +8,7 @@ import { PRESS_SINK, usePressFeedback } from '../hooks/use-press-feedback';
 import { SIZE, THERMAL_COLORS, TYPE } from '../theme';
 import { HardShadow } from './panel';
 
-export type PixelButtonVariant = 'gold' | 'outline' | 'outlineGold' | 'cream' | 'muted' | 'void' | 'paper';
+export type PixelButtonVariant = 'gold' | 'outline' | 'outlineGold' | 'outlineRed' | 'cream' | 'muted' | 'void' | 'paper';
 
 interface PixelButtonProps {
   label: string;
@@ -106,6 +106,7 @@ const VARIANTS: Record<PixelButtonVariant, VariantConfig> = {
   gold: { background: THERMAL_COLORS.gold, text: THERMAL_COLORS.void, shadow: '#000000' },
   outline: { background: 'transparent', text: THERMAL_COLORS.white, border: 'rgba(255,255,255,0.6)', borderWidth: 2 },
   outlineGold: { background: 'transparent', text: THERMAL_COLORS.gold, border: THERMAL_COLORS.gold, borderWidth: 2 },
+  outlineRed: { background: 'transparent', text: THERMAL_COLORS.red, border: 'rgba(255,45,45,0.6)', borderWidth: 2 },
   cream: { background: THERMAL_COLORS.cream, text: THERMAL_COLORS.void, shadow: THERMAL_COLORS.orange },
   muted: { background: 'transparent', text: 'rgba(255,255,255,0.35)', border: THERMAL_COLORS.borderSoft, borderWidth: 2 },
   void: { background: THERMAL_COLORS.void, text: THERMAL_COLORS.cream, shadow: THERMAL_COLORS.red },
