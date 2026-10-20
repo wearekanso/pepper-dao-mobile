@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Modal, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUser } from '@/contexts/user-context';
@@ -11,6 +11,7 @@ import type { Rank } from '@/types/user';
 
 import { formatInteger } from '../lib/format';
 import { formatShu, getHeatLevel, getNextHeatLevel, getRankLabel, MAX_HEAT_LEVEL } from '../lib/heat-levels';
+import { DURATION, fadeIn, revealAt, STAGGER, TIMING } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 import { HeatBurst, Sparks } from './heat-burst';
 import { HeatPepper } from './pixel-art';
@@ -77,7 +78,7 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
     if (!transition) return;
     const timer = setTimeout(() => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 650);
+    }, STAGGER.lead + DURATION.emphasis);
     return () => clearTimeout(timer);
   }, [transition]);
 
@@ -94,25 +95,25 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
-      <Animated.View entering={FadeIn.duration(200)} style={[styles.root, { width, height }]}>
+      <Animated.View entering={fadeIn()} style={[styles.root, { width, height }]}>
         <HeatBurst width={width} height={height} />
         <Sparks width={width} height={height} />
 
         <View style={[styles.center, { top: height * 0.17 }]}>
-          <Animated.View entering={FadeIn.duration(300).delay(300)} style={styles.badge}>
+          <Animated.View entering={revealAt(0)} style={styles.badge}>
             <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold }]}>NEW HEAT LEVEL UNLOCKED</Text>
           </Animated.View>
 
           <BouncingPepper levelRank={transition.to} />
 
-          <Animated.Text entering={FadeIn.duration(320).delay(500)} style={[TYPE.display72, styles.ink, { marginTop: 10 }]}>
+          <Animated.Text entering={revealAt(1)} style={[TYPE.display72, styles.ink, { marginTop: 10 }]}>
             LEVEL UP
           </Animated.Text>
-          <Animated.Text entering={FadeIn.duration(300).delay(620)} style={[TYPE.meta26, styles.ink]}>
+          <Animated.Text entering={revealAt(2)} style={[TYPE.meta26, styles.ink]}>
             {`${getRankLabel(transition.from)}  >  ${getRankLabel(transition.to)}`}
           </Animated.Text>
 
-          <Animated.View entering={FadeIn.duration(320).delay(740)}>
+          <Animated.View entering={revealAt(3)}>
             <View>
               <View style={[styles.cardShadow]} />
               <View style={styles.card}>
@@ -129,7 +130,7 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
         </View>
 
         <Animated.View
-          entering={FadeIn.duration(320).delay(900)}
+          entering={revealAt(4)}
           style={[styles.actions, { bottom: insets.bottom + 24 }]}
         >
           <PixelButton label="CONTINUE >" variant="void" onPress={onClose} />
@@ -144,7 +145,7 @@ function BouncingPepper({ levelRank }: { levelRank: Rank }) {
   const drop = useSharedValue(0);
 
   useEffect(() => {
-    drop.value = withDelay(250, withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) }));
+    drop.value = withDelay(STAGGER.lead, withTiming(1, TIMING.emphasis));
   }, [drop]);
 
   const animatedStyle = useAnimatedStyle(() => ({

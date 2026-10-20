@@ -9,6 +9,7 @@ import { formatPepperAmount, formatTimeAgoFromSeconds } from '@/lib/pepper-metri
 import type { TreasuryChzTx, TreasuryWindow } from '@/services/chiliz-api';
 
 import { shortenAddress } from '../lib/format';
+import { FEEDBACK_HOLD_MS } from '../motion';
 import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
 import { DashedDivider, FilterChip, Tag, Touchable } from './atoms';
 import { HardShadow } from './panel';
@@ -32,7 +33,7 @@ export function TreasurySheet({ visible, onClose, address }: TreasurySheetProps)
 
   useEffect(() => {
     if (!copied) return;
-    const timer = setTimeout(() => setCopied(null), 1600);
+    const timer = setTimeout(() => setCopied(null), FEEDBACK_HOLD_MS);
     return () => clearTimeout(timer);
   }, [copied]);
 

@@ -14,6 +14,7 @@ import Animated, {
 import type { VoteOption } from '@/types/governance';
 
 import { formatStampDate } from '../lib/format';
+import { DURATION, TIMING } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 import { HardShadow } from './panel';
 
@@ -35,7 +36,7 @@ export function VoteStamp({ option, date, slam }: VoteStampProps) {
 
   useEffect(() => {
     if (!slam) {
-      opacity.value = withTiming(1, { duration: 500 });
+      opacity.value = withTiming(1, { duration: DURATION.emphasis });
       progress.value = 1;
       return;
     }
@@ -78,7 +79,7 @@ export function RepSticker({ points, delay = 420 }: RepStickerProps) {
   const pop = useSharedValue(0);
 
   useEffect(() => {
-    pop.value = withDelay(delay, withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }));
+    pop.value = withDelay(delay, withTiming(1, TIMING.enter));
   }, [delay, pop]);
 
   const animatedStyle = useAnimatedStyle(() => ({

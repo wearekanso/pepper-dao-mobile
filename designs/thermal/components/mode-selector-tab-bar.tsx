@@ -10,11 +10,11 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
+import { TIMING } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 import { PixelArt } from './pixel-art';
 
@@ -33,7 +33,7 @@ export function ModeSelectorTabBar({ state, navigation }: BottomTabBarProps) {
   const active = useSharedValue(activeModeIndex);
 
   useEffect(() => {
-    active.value = withTiming(activeModeIndex, { duration: 260, easing: Easing.out(Easing.cubic) });
+    active.value = withTiming(activeModeIndex, TIMING.enter);
   }, [active, activeModeIndex]);
 
   const centers = useMemo(() => {

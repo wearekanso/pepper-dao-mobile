@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -13,6 +13,7 @@ import { Panel } from '../components/panel';
 import { PixelBar } from '../components/pixel-bar';
 import { PixelButton } from '../components/pixel-button';
 import { SensorGrid } from '../components/thermal-background';
+import { stepIn, stepOut } from '../motion';
 import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
 
 interface OnboardingScreenProps {
@@ -78,8 +79,8 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
 
         <Animated.View
           key={step.number}
-          entering={FadeInRight.duration(260)}
-          exiting={FadeOutLeft.duration(160)}
+          entering={stepIn()}
+          exiting={stepOut()}
           style={styles.step}
         >
           <Text style={[TYPE.display72, styles.inkShadow, { color: THERMAL_COLORS.gold }]}>{step.number}</Text>

@@ -6,6 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { copyToClipboard } from '@/lib/clipboard';
 
 import { shortenAddress } from '../lib/format';
+import { FEEDBACK_HOLD_MS } from '../motion';
 import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
 import { Touchable } from './atoms';
 import { HardShadow } from './panel';
@@ -31,7 +32,7 @@ export function InfoSheet({ visible, onClose, eyebrow, title, message, address }
 
   useEffect(() => {
     if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1600);
+    const timer = setTimeout(() => setCopied(false), FEEDBACK_HOLD_MS);
     return () => clearTimeout(timer);
   }, [copied]);
 

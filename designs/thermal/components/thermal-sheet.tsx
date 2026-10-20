@@ -11,10 +11,11 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { DURATION, TIMING } from '../motion';
 import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
 import { Touchable } from './atoms';
 
@@ -49,11 +50,11 @@ export function ThermalSheet({ visible, onClose, eyebrow, title, subtitle, child
     if (visible) {
       setIsMounted(true);
       offset.value = height;
-      offset.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
-      scrim.value = withTiming(1, { duration: 220 });
+      offset.value = withTiming(0, TIMING.enter);
+      scrim.value = withTiming(1, { duration: DURATION.base });
     } else if (isMounted) {
-      scrim.value = withTiming(0, { duration: 180 });
-      offset.value = withTiming(height, { duration: 220, easing: Easing.in(Easing.quad) }, (finished) => {
+      scrim.value = withTiming(0, { duration: DURATION.exit });
+      offset.value = withTiming(height, TIMING.exit, (finished) => {
         if (finished) runOnJS(setIsMounted)(false);
       });
     }
@@ -74,7 +75,7 @@ export function ThermalSheet({ visible, onClose, eyebrow, title, subtitle, child
           if (gesture.dy > DISMISS_DISTANCE || gesture.vy > 1.2) {
             onClose();
           } else {
-            offset.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
+            offset.value = withTiming(0, TIMING.enter);
           }
         },
       }),

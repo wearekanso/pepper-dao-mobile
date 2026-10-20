@@ -1,4 +1,6 @@
-import { Easing, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
+
+import { TIMING } from '../motion';
 
 /**
  * One press feel for every tappable surface in the thermal design:
@@ -14,10 +16,10 @@ export function usePressFeedback() {
     pressed,
     pressHandlers: {
       onPressIn: () => {
-        pressed.value = withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) });
+        pressed.value = withTiming(1, TIMING.press);
       },
       onPressOut: () => {
-        pressed.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) });
+        pressed.value = withTiming(0, TIMING.release);
       },
     },
   };

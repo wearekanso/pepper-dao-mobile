@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
+import { TIMING } from '../motion';
 import { THERMAL_COLORS } from '../theme';
 
 interface HeatBurstProps {
@@ -132,7 +133,7 @@ function BurstRing({ index, d, color, width, height, burstKey, flow }: BurstRing
   useEffect(() => {
     const delay = (BURST_RINGS.length - index) * 55;
     scale.value = 0;
-    scale.value = withDelay(delay, withTiming(1, { duration: 520, easing: Easing.out(Easing.cubic) }));
+    scale.value = withDelay(delay, withTiming(1, TIMING.emphasis));
     // In flow mode the rings are phase-shifted evenly so one wave travels outward per period
     const period = flow ? FLOW_PULSE_MS : 1400;
     const stagger = flow ? period / BURST_RINGS.length : 90;

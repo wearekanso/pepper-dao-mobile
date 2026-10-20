@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 import * as Haptics from 'expo-haptics';
 import Animated, {
   Easing,
-  FadeIn,
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
@@ -12,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { PRESS_SINK, usePressFeedback } from '../hooks/use-press-feedback';
+import { fadeIn } from '../motion';
 import { SPACE, THERMAL_COLORS } from '../theme';
 
 interface PanelProps {
@@ -62,7 +62,7 @@ export function Panel({
   );
 
   return (
-    <Animated.View entering={FadeIn.duration(200)} style={[styles.wrapper, style]}>
+    <Animated.View entering={fadeIn()} style={[styles.wrapper, style]}>
       <HardShadow color={shadowColor} />
       {onPress ? (
         <Pressable

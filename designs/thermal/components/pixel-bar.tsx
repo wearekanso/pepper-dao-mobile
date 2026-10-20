@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { TIMING } from '../motion';
 import { THERMAL_COLORS, VOTE_COLORS } from '../theme';
 
 interface PixelBarProps {
@@ -49,7 +50,7 @@ function Segment({ color, index, delay }: SegmentProps) {
 
   useEffect(() => {
     lit.value = 0;
-    lit.value = withDelay(delay + index * 12, withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }));
+    lit.value = withDelay(delay + index * 12, withTiming(1, TIMING.cell));
   }, [color, delay, index, lit]);
 
   const animatedStyle = useAnimatedStyle(() => ({

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Modal, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useWallet } from '@/contexts/wallet-context';
@@ -11,6 +11,7 @@ import { HeatBurst, Sparks } from '../components/heat-burst';
 import { HeatPepper } from '../components/pixel-art';
 import { PixelButton } from '../components/pixel-button';
 import { getHeatLevel } from '../lib/heat-levels';
+import { fadeIn, revealAt } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 
 interface WalletLinkScreenProps {
@@ -41,7 +42,7 @@ export function WalletLinkScreen({ visible, onDismiss }: WalletLinkScreenProps) 
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleExplore}>
-      <Animated.View entering={FadeIn.duration(200)} style={[styles.root, { width, height }]}>
+      <Animated.View entering={fadeIn()} style={[styles.root, { width, height }]}>
         <HeatBurst width={width} height={height} centerY={0.38} />
         <Sparks width={width} height={height} />
 
@@ -55,21 +56,21 @@ export function WalletLinkScreen({ visible, onDismiss }: WalletLinkScreenProps) 
         </View>
 
         <View style={[styles.center, { top: height * 0.15 }]}>
-          <Animated.View entering={FadeIn.duration(300).delay(250)}>
+          <Animated.View entering={revealAt(0)}>
             <View style={{ position: 'absolute', left: 6, top: 6 }}>
               <HeatPepper level={LEVEL} silhouette={THERMAL_COLORS.void} />
             </View>
             <HeatPepper level={LEVEL} />
           </Animated.View>
 
-          <Animated.Text entering={FadeIn.duration(320).delay(450)} style={[TYPE.display58, styles.ink, styles.centered]}>
+          <Animated.Text entering={revealAt(1)} style={[TYPE.display58, styles.ink, styles.centered]}>
             {'LINK YOUR\nWALLET'}
           </Animated.Text>
-          <Animated.Text entering={FadeIn.duration(300).delay(570)} style={[TYPE.meta26, styles.ink]}>
+          <Animated.Text entering={revealAt(2)} style={[TYPE.meta26, styles.ink]}>
             {'GUEST  >  MEMBER'}
           </Animated.Text>
 
-          <Animated.View entering={FadeIn.duration(320).delay(690)}>
+          <Animated.View entering={revealAt(3)}>
             <View>
               <View style={styles.cardShadow} />
               <View style={styles.card}>
@@ -81,7 +82,7 @@ export function WalletLinkScreen({ visible, onDismiss }: WalletLinkScreenProps) 
           </Animated.View>
         </View>
 
-        <Animated.View entering={FadeIn.duration(320).delay(850)} style={[styles.actions, { bottom: insets.bottom + 24 }]}>
+        <Animated.View entering={revealAt(4)} style={[styles.actions, { bottom: insets.bottom + 24 }]}>
           <PixelButton label="CONNECT WALLET >" variant="void" onPress={handleConnect} />
           <PixelButton label="EXPLORE AS GUEST" variant="paper" onPress={handleExplore} />
         </Animated.View>

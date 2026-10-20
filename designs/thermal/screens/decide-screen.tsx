@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import Animated, { LinearTransition } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import type { GovernanceProposal } from '@/types/governance';
@@ -13,6 +13,7 @@ import { EndedList, LiveProposalPanel } from '../components/proposal-panels';
 import { ThermalScreen } from '../components/thermal-screen';
 import { WalletChip } from '../components/wallet-chip';
 import { isLiveProposal } from '../lib/proposal';
+import { layoutTransition } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 
 /**
@@ -87,7 +88,7 @@ export function DecideScreen() {
       ) : null}
 
       {live.length > 0 ? (
-        <Animated.View layout={LinearTransition} style={{ gap: 18 }}>
+        <Animated.View layout={layoutTransition()} style={{ gap: 18 }}>
           <StatusLabel label="LIVE" />
           {live.map((proposal, index) => (
             <LiveProposalPanel
@@ -102,7 +103,7 @@ export function DecideScreen() {
       ) : null}
 
       {ended.length > 0 ? (
-        <Animated.View layout={LinearTransition} style={{ gap: 18 }}>
+        <Animated.View layout={layoutTransition()} style={{ gap: 18 }}>
           <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>ENDED</Text>
           <EndedList key={filter} proposals={ended} index={live.length + 1} onOpen={openProposal} />
         </Animated.View>

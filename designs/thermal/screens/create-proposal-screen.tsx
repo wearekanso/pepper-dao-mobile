@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { FadeInRight, FadeOutLeft, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -30,6 +30,7 @@ import { PixelBar } from '../components/pixel-bar';
 import { PixelButton } from '../components/pixel-button';
 import { ThermalBackground } from '../components/thermal-background';
 import { NAV_BAR_HEIGHT, ThermalNavBar } from '../components/thermal-nav-bar';
+import { stepIn, stepOut } from '../motion';
 import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
 
 type Stage = 0 | 1 | 2;
@@ -171,7 +172,7 @@ export function CreateProposalScreen() {
           </View>
           <PixelBar colors={progressColors(stage)} height={6} gap={3} delay={0} />
 
-          <Animated.View key={stage} entering={FadeInRight.duration(240)} exiting={FadeOutLeft.duration(140)} style={styles.stageBody}>
+          <Animated.View key={stage} entering={stepIn()} exiting={stepOut()} style={styles.stageBody}>
             {stage === 0 ? (
               <BasicsStage form={form} errors={errors} onChange={updateField} />
             ) : stage === 1 ? (

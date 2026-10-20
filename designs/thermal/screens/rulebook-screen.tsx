@@ -3,8 +3,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  FadeOut,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -16,6 +14,7 @@ import { Tag, Touchable } from '../components/atoms';
 import { HardShadow } from '../components/panel';
 import { ThermalScreen } from '../components/thermal-screen';
 import { CONSTITUTION, type ConstitutionArticle } from '../lib/constitution';
+import { DURATION, fadeOut, layoutTransition, TIMING } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 
 /**
@@ -85,7 +84,7 @@ function ProgressCell({ isRead }: { isRead: boolean }) {
   const fill = useSharedValue(isRead ? 1 : 0);
 
   useEffect(() => {
-    fill.value = withTiming(isRead ? 1 : 0, { duration: 350 });
+    fill.value = withTiming(isRead ? 1 : 0, { duration: DURATION.reveal });
   }, [fill, isRead]);
 
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: fill.value }] }));
@@ -109,13 +108,13 @@ function ArticlePanel({ article, index, isOpen, onToggle }: ArticlePanelProps) {
   const accent = article.locked ? THERMAL_COLORS.red : THERMAL_COLORS.gold;
 
   useEffect(() => {
-    rotation.value = withTiming(isOpen ? 1 : 0, { duration: 200 });
+    rotation.value = withTiming(isOpen ? 1 : 0, TIMING.enter);
   }, [isOpen, rotation]);
 
   const iconStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value * 180}deg` }] }));
 
   return (
-    <Animated.View layout={LinearTransition.duration(220)}>
+    <Animated.View layout={layoutTransition()}>
       <HardShadow />
       <View
         style={[
@@ -147,7 +146,7 @@ function ArticlePanel({ article, index, isOpen, onToggle }: ArticlePanelProps) {
         {article.tracks ? <TrackChips /> : null}
 
         {isOpen ? (
-          <Animated.View exiting={FadeOut.duration(120)} style={{ gap: 12 }}>
+          <Animated.View exiting={fadeOut()} style={{ gap: 12 }}>
             {article.body ? <Text style={[TYPE.body14, { color: 'rgba(255,255,255,0.85)' }]}>{article.body}</Text> : null}
             {article.points?.map((point, pointIndex) => (
               <Animated.View
