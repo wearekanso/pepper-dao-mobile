@@ -19,6 +19,7 @@ import { ChevronLink, DashedDivider, LiveMarker, SectionLabel, StatusTag, Tag, T
 import { Panel } from '../components/panel';
 import { getVoteBarColors, PixelBar } from '../components/pixel-bar';
 import { PixelButton } from '../components/pixel-button';
+import { ErrorCard } from '../components/state-cards';
 import { ThermalScreen } from '../components/thermal-screen';
 import { VoteSheet } from '../components/vote-sheet';
 import { RepSticker, VoteStamp } from '../components/vote-stamp';
@@ -54,7 +55,6 @@ export function ProposalDetailScreen() {
   const { refetch, isRefetching } = query;
   const isLoading = !isDemo && query.isLoading;
   const isError = !isDemo && query.isError;
-  const error = query.error;
 
   const [pendingOption, setPendingOption] = useState<Exclude<VoteOption, 'NONE'> | null>(null);
   const [freshVote, setFreshVote] = useState<FreshVote | null>(null);
@@ -112,11 +112,11 @@ export function ProposalDetailScreen() {
       ) : null}
 
       {isError && !proposal ? (
-        <Panel borderColor={THERMAL_COLORS.red}>
-          <Text style={TYPE.display24}>Signal lost</Text>
-          <Text style={TYPE.body13}>{error?.message ?? 'Unable to load proposal.'}</Text>
-          <PixelButton label="RETRY" onPress={() => void refetch()} />
-        </Panel>
+        <ErrorCard
+          message="We couldn't reach the Chiliz network to load this proposal. Your data is safe — try again in a moment."
+          onRetry={() => void refetch()}
+          explorerUrl={EXPLORER_URL}
+        />
       ) : null}
 
       {!isLoading && !isError && !proposal ? (

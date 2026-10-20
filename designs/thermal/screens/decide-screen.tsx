@@ -1,20 +1,19 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import type { GovernanceProposal } from '@/types/governance';
 
 import { ChevronLink, FilterChip, LiveMarker, SectionLabel } from '../components/atoms';
-import { Panel } from '../components/panel';
 import { PixelButton } from '../components/pixel-button';
 import { EndedList, LiveProposalPanel } from '../components/proposal-panels';
+import { EmptyCard, ErrorCard, SkeletonCard } from '../components/state-cards';
 import { TabHeader } from '../components/tab-header';
 import { ThermalScreen } from '../components/thermal-screen';
 import { isLiveProposal } from '../lib/proposal';
 import { layoutTransition } from '../motion';
-import { INK, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * DECIDE — every Aragon proposal: live votes up top, the ended log below.
@@ -62,18 +61,19 @@ export function DecideScreen() {
       </View>
 
       {isLoading && !data ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={THERMAL_COLORS.gold} />
-          <Text style={[TYPE.label12, { color: INK.muted }]}>SCANNING PROPOSALS…</Text>
+        <View style={{ gap: 12 }}>
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={1} />
+          <SkeletonCard lines={1} />
         </View>
       ) : null}
 
       {isError && !data ? (
-        <Panel borderColor={THERMAL_COLORS.red}>
-          <Text style={TYPE.display24}>Signal lost</Text>
-          <Text style={TYPE.body13}>Unable to load governance proposals.</Text>
-          <PixelButton label="RETRY" onPress={() => void refetch()} />
-        </Panel>
+        <ErrorCard
+          message="We couldn't reach the Chiliz network to load proposals. Your data is safe — try again in a moment."
+          onRetry={() => void refetch()}
+          explorerUrl={EXPLORER_URL}
+        />
       ) : null}
 
       {live.length > 0 ? (
@@ -98,10 +98,12 @@ export function DecideScreen() {
       ) : null}
 
       {data && live.length === 0 && ended.length === 0 ? (
-        <Panel>
-          <Text style={TYPE.display24}>Cold zone</Text>
-          <Text style={TYPE.body13}>No proposals match this filter yet.</Text>
-        </Panel>
+        <EmptyCard
+          title={EMPTY_COPY[filter].title}
+          message={EMPTY_COPY[filter].message}
+          actionLabel={filter === 'ALL' ? undefined : 'SHOW ALL PROPOSALS'}
+          onAction={() => setFilter('ALL')}
+        />
       ) : null}
     </ThermalScreen>
   );
@@ -109,6 +111,20 @@ export function DecideScreen() {
 
 const FILTERS = ['ALL', 'COMMUNITY', 'COUNCIL'] as const;
 type FilterKey = (typeof FILTERS)[number];
+
+const EMPTY_COPY: Record<FilterKey, { title: string; message: string }> = {
+  ALL: { title: 'No proposals yet', message: 'The first proposal will heat up here. Anyone with enough vePEPPER can start one.' },
+  COMMUNITY: {
+    title: 'No community votes',
+    message: 'Community votes show up here once ministers approve a proposal. Council decisions are under COUNCIL.',
+  },
+  COUNCIL: {
+    title: 'No council decisions',
+    message: 'Council decisions show up here when ministers make admin changes. Community votes are under ALL or COMMUNITY.',
+  },
+};
+
+const EXPLORER_URL = 'https://chiliscan.com';
 
 const FILTER_TYPES: Record<FilterKey, Array<GovernanceProposal['type']>> = {
   ALL: ['PEP', 'ADMIN', 'MULTISIG', 'OTHER'],
@@ -126,10 +142,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  center: {
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 32,
   },
 });

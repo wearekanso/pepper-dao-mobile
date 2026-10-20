@@ -1,3 +1,4 @@
+import { useNetInfo } from '@react-native-community/netinfo';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
@@ -16,6 +17,7 @@ import { telemetry } from '@/lib/telemetry';
 import { ChevronLink, LiveMarker, SectionLabel } from '../components/atoms';
 import { CornerBrackets } from '../components/corner-brackets';
 import { InfoSheet } from '../components/info-sheet';
+import { NoticeBanner } from '../components/state-cards';
 import { Panel } from '../components/panel';
 import { PixelArt } from '../components/pixel-art';
 import { PixelButton } from '../components/pixel-button';
@@ -39,6 +41,10 @@ export function PulseScreen() {
   const router = useRouter();
   const focusKey = useFocusKey();
   const { metrics, isFetching, refetch } = usePepperTokenMetrics();
+  const { isWrongNetwork, switchToChiliz } = useWallet();
+  const netInfo = useNetInfo();
+  const isOffline = netInfo.isConnected === false;
+  const updatedAgo = metrics ? formatMinutesAgo(metrics.updatedAt) : null;
   const { data: proposals, refetch: refetchProposals } = useGovernanceProposals({});
   const [modal, setModal] = useState<ModalKey | null>(null);
 
@@ -105,7 +111,29 @@ export function PulseScreen() {
 
   return (
     <ThermalScreen preset="pulse" refreshing={isFetching && Boolean(metrics)} onRefresh={handleRefresh}>
-      <TabHeader title="PULSE" subtitle="DAO TREASURY & TOKEN" />
+      <TabHeader
+        title="PULSE"
+        subtitle={isOffline && updatedAgo ? `LAST UPDATED ${updatedAgo.toUpperCase()}` : 'DAO TREASURY & TOKEN'}
+      />
+
+      {isOffline ? (
+        <NoticeBanner
+          label="YOU'RE OFFLINE"
+          message={updatedAgo ? `Showing data from ${updatedAgo}` : 'Waiting for a connection'}
+          tone="muted"
+          actionLabel="RETRY"
+          onAction={handleRefresh}
+        />
+      ) : isWrongNetwork ? (
+        <NoticeBanner
+          label="WRONG NETWORK"
+          message="Your wallet is on another network"
+          tone="negative"
+          actionLabel="SWITCH TO CHILIZ"
+          onAction={() => void switchToChiliz()}
+          solidAction
+        />
+      ) : null}
 
       <Pressable onPress={() => setModal('treasury')} onLongPress={() => setModal('treasuryInfo')}>
         <View style={styles.hero}>
@@ -293,6 +321,13 @@ function HeatShortcut({ index, onPress }: HeatShortcutProps) {
 /** Gold ">" at the right edge of a tappable card */
 function Chevron() {
   return <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>;
+}
+
+/** ISO time → "2 min ago" / "just now" */
+function formatMinutesAgo(iso: string): string {
+  const minutes = Math.floor((Date.now() - Date.parse(iso)) / 60_000);
+  if (!Number.isFinite(minutes) || minutes < 1) return 'just now';
+  return minutes < 60 ? `${minutes} min ago` : `${Math.floor(minutes / 60)} h ago`;
 }
 
 function formatDelta(delta: bigint | null): string {

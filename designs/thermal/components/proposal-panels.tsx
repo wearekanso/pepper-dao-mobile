@@ -40,7 +40,7 @@ export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps)
   const split = getVoteSplit(proposal);
   const isActive = proposal.status === 'ACTIVE';
   const userVote = getUserVote(proposal);
-  const { isConnected, connect } = useWallet();
+  const { isConnected, connect, isWrongNetwork, switchToChiliz } = useWallet();
 
   return (
     <Panel live index={index} onPress={onOpen}>
@@ -60,7 +60,17 @@ export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps)
 
       <DashedDivider />
 
-      {isConnected ? (
+      {isConnected && isWrongNetwork ? (
+        <View style={styles.between}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>
+            {userVote ? `YOU VOTED ${userVote}` : "YOU HAVEN'T VOTED YET"}
+          </Text>
+          <Touchable onPress={() => void switchToChiliz()} hitSlop={8} style={styles.row6}>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>SWITCH NETWORK</Text>
+            <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+          </Touchable>
+        </View>
+      ) : isConnected ? (
         <View style={styles.between}>
           <Text style={[TYPE.label12, { color: INK.muted }]}>
             {userVote ? `YOU VOTED ${userVote}` : "YOU HAVEN'T VOTED YET"}
