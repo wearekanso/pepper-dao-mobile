@@ -141,7 +141,7 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
       <FloatingArt profile={profile} centerX={centerX} />
       <Crosshair centerX={centerX} />
       <ThermalScale levelIndex={heat.current.level - 1} />
-      <YouCallout shu={heat.shu} centerX={centerX} />
+      <YouCallout shu={heat.shu} levelIndex={heat.current.level - 1} centerX={centerX} />
 
       <View style={styles.readout}>
         <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT · SCOVILLE READING</Text>
@@ -195,22 +195,33 @@ function Crosshair({ centerX }: { centerX: number }) {
   );
 }
 
-function YouCallout({ shu, centerX }: { shu: number; centerX: number }) {
+/**
+ * "YOU" tag pinned to your row on the thermal scale (Figma: callout sits on
+ * the current level's line and replaces its label). The pixel leader points
+ * back toward the camera art: it steps down to the tag when the tag is below
+ * the art (as in Figma) and up to it when the tag is above.
+ */
+function YouCallout({ shu, levelIndex, centerX }: { shu: number; levelIndex: number; centerX: number }) {
+  const level = LEVEL_LIST[levelIndex];
+  const top = levelLabelTop(levelIndex) - CALLOUT_OFFSET;
+  const isBelowArt = top + CALLOUT_HEIGHT / 2 > ART_CENTER_Y;
+
   return (
-    <View
-     
-      pointerEvents="none"
-      style={[styles.callout, { left: centerX + 39 }]}
-    >
-      <View style={{ marginTop: 30 }}>
+    <View pointerEvents="none" style={[styles.callout, { top, left: centerX - LEADER_INSET }]}>
+      <View style={isBelowArt ? styles.leaderDown : styles.leaderUp}>
         <PixelArt name="leader" />
       </View>
       <View style={styles.calloutBox}>
-        <Text style={[TYPE.label10, { color: THERMAL_COLORS.void }]}>YOU</Text>
+        <Text style={[TYPE.label12, { color: THERMAL_COLORS.void }]}>{`YOU · ${level.name} ${formatShu(level.shu)}`}</Text>
         <Text style={[TYPE.meta18, { color: THERMAL_COLORS.void }]}>{`${formatInteger(shu)} SHU`}</Text>
       </View>
     </View>
   );
+}
+
+/** Stage y of a level's scale label (Figma: BELL 412 … REAPER 52) */
+function levelLabelTop(levelIndex: number): number {
+  return SCALE_BOTTOM_LABEL_TOP - levelIndex * LEVEL_STEP;
 }
 
 /** Right-hand thermal scale: cells fill bottom-up, then the marker slides to your level */
@@ -226,18 +237,16 @@ function ThermalScale({ levelIndex }: { levelIndex: number }) {
   return (
     <View pointerEvents="none" style={styles.scale}>
       <View style={styles.scaleLabels}>
-        {LEVEL_LIST.map((level, index) => (
-          <Text
-            key={level.rank}
-            style={[
-              TYPE.meta16,
-              styles.scaleLabel,
-              { bottom: index * LEVEL_STEP - 2, color: index === levelIndex ? THERMAL_COLORS.white : 'rgba(255,255,255,0.55)' },
-            ]}
-          >
-            {`${level.name} ${formatShu(level.shu)}`}
-          </Text>
-        ))}
+        {LEVEL_LIST.map((level, index) =>
+          index === levelIndex ? null : (
+            <Text
+              key={level.rank}
+              style={[TYPE.meta18, styles.scaleLabel, { bottom: index * LEVEL_STEP - 4, color: SCALE_LABEL_INK }]}
+            >
+              {`${level.name} ${formatShu(level.shu)}`}
+            </Text>
+          ),
+        )}
       </View>
       <View style={{ gap: 2 }}>
         {SCALE_COLORS.map((color, index) => (
@@ -543,6 +552,17 @@ const ART_SIZE = 110;
 const ART_CENTER_Y = 273;
 const LEVEL_STEP = 72;
 const VIEWFINDER_TOP = 44;
+/** Figma: BELL label top in the stage; each level above is LEVEL_STEP higher */
+const SCALE_BOTTOM_LABEL_TOP = 412;
+/** Callout box top sits 10pt above its level label; box is ~42pt tall */
+const CALLOUT_OFFSET = 10;
+const CALLOUT_HEIGHT = 42;
+/** Leader starts 4pt left of the art centre (Figma x 181 vs centre 185) */
+const LEADER_INSET = 4;
+/** Rising leader (tag above the art) sits lower so it meets the box's lower edge */
+const LEADER_UP_TOP = 18;
+/** Scale level labels (Figma: 55% white) */
+const SCALE_LABEL_INK = 'rgba(255,255,255,0.55)';
 
 const LEVEL_LIST = Object.values(HEAT_LEVELS);
 
@@ -629,12 +649,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: ART_CENTER_Y - 14,
   },
-  // Sits in the gap between the GHOST and HABANERO scale labels
   callout: {
     position: 'absolute',
-    top: ART_CENTER_Y - 124,
     flexDirection: 'row',
     alignItems: 'flex-start',
+  },
+  // The pixel leader art rises left→right; mirrored, it steps down into the tag
+  leaderDown: {
+    marginTop: -4,
+    transform: [{ scaleY: -1 }],
+  },
+  leaderUp: {
+    marginTop: LEADER_UP_TOP,
   },
   calloutBox: {
     backgroundColor: THERMAL_COLORS.cream,
