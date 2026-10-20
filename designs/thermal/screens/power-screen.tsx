@@ -13,35 +13,28 @@ import Animated, {
 import { useUser } from '@/contexts/user-context';
 import { useActivities } from '@/hooks/use-activities';
 import { RANK_IMAGES } from '@/lib/rank-images';
-import { getEventTitle } from '@/lib/reputation';
+import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
 
-import { BlinkDot, DashedDivider, Touchable } from '../components/atoms';
+import { BlinkDot, DashedDivider } from '../components/atoms';
 import { CornerBrackets } from '../components/corner-brackets';
 import { HowToEarnSheet } from '../components/how-to-earn-sheet';
 import { Panel } from '../components/panel';
 import { HeatPepper, PixelArt } from '../components/pixel-art';
 import { getHeatBarColors, PixelBar } from '../components/pixel-bar';
 import { PixelButton } from '../components/pixel-button';
-import { PIXEL_CORE_VARIANTS, PixelCore, type PixelCoreVariant } from '../components/pixel-core';
+import { PixelCore, type PixelCoreVariant } from '../components/pixel-core';
 import { useRankUp } from '../components/rank-up-overlay';
 import { StakeSheet } from '../components/stake-sheet';
 import { getHeatHotspot, sampleHeatColor } from '../components/thermal-background';
+import { TabHeader } from '../components/tab-header';
 import { ThermalScreen } from '../components/thermal-screen';
 import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
 import { useFocusKey } from '../hooks/use-focus-key';
 import { formatDayMonth, formatInteger } from '../lib/format';
-import {
-  formatShu,
-  getHeatProgress,
-  getRankLabel,
-  getRetentionTier,
-  HEAT_LEVELS,
-  MAX_HEAT_LEVEL,
-  RETENTION_TIERS,
-} from '../lib/heat-levels';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { formatShu, getHeatLevel, getHeatProgress, getRankLabel, HEAT_LEVELS, MAX_HEAT_LEVEL } from '../lib/heat-levels';
+import { INK, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * POWER — your heat signature: the camera locks onto your rank art, the
@@ -51,14 +44,15 @@ export function PowerScreen() {
   const { profile, isLoading } = useUser();
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const [isHowToOpen, setIsHowToOpen] = useState(false);
-  const [coreVariant, setCoreVariant] = useState<PixelCoreVariant>('flip');
 
   return (
     <ThermalScreen preset="power">
+      <TabHeader title="POWER" subtitle="YOUR HEAT, STREAK & LEVEL" />
+
       {isLoading && !profile ? (
         <View style={styles.center}>
           <ActivityIndicator color={THERMAL_COLORS.gold} />
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>CALIBRATING SENSOR…</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>CALIBRATING SENSOR…</Text>
         </View>
       ) : null}
 
@@ -72,9 +66,9 @@ export function PowerScreen() {
 
       {profile ? (
         <>
-          <CoreVariantTabs value={coreVariant} onChange={setCoreVariant} />
-          <HeatCamera profile={profile} variant={coreVariant} />
-          <RetentionPanel profile={profile} />
+          <HeatCamera profile={profile} variant={CORE_VARIANT} />
+          <StreakPanel profile={profile} />
+          <NextLevelPanel profile={profile} />
           <Animated.View style={[styles.row, { gap: 12 }]}>
             <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
             <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
@@ -86,31 +80,6 @@ export function PowerScreen() {
       <StakeSheet visible={isStakeOpen} onClose={() => setIsStakeOpen(false)} />
       {profile ? <HowToEarnSheet visible={isHowToOpen} profile={profile} onClose={() => setIsHowToOpen(false)} /> : null}
     </ThermalScreen>
-  );
-}
-
-/** Temporary picker to compare background animations — remove once one is chosen */
-function CoreVariantTabs({ value, onChange }: { value: PixelCoreVariant; onChange: (variant: PixelCoreVariant) => void }) {
-  return (
-    <View style={[styles.row, { gap: 8, flexWrap: 'wrap' }]}>
-      {PIXEL_CORE_VARIANTS.map((option) => {
-        const isActive = option.value === value;
-        return (
-          <Touchable
-            key={option.value}
-            hitSlop={8}
-            onPress={() => onChange(option.value)}
-            style={[styles.variantTab, isActive && styles.variantTabActive]}
-          >
-            <View pointerEvents="none">
-              <Text style={[TYPE.label10, { color: isActive ? THERMAL_COLORS.void : 'rgba(255,255,255,0.7)' }]}>
-                {option.label}
-              </Text>
-            </View>
-          </Touchable>
-        );
-      })}
-    </View>
   );
 }
 
@@ -155,7 +124,6 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
           <BlinkDot />
           <Text style={TYPE.meta18}>REC · PEPPER-CAM 02</Text>
         </View>
-        <WalletChip />
       </Animated.View>
 
       <View style={styles.viewfinder} pointerEvents="none">
@@ -168,16 +136,16 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
       <YouCallout shu={heat.shu} centerX={centerX} />
 
       <View style={styles.readout}>
-        <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>YOUR HEAT · SCOVILLE READING</Text>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT · SCOVILLE READING</Text>
         <Pressable onLongPress={preview} delayLongPress={600}>
           <View style={[styles.row, { alignItems: 'flex-end', gap: 8 }]}>
             <Text style={[TYPE.display72, styles.dropShadow]}>{formatInteger(animatedShu)}</Text>
-            <Text style={[TYPE.label15, styles.dropShadowSmall, { marginBottom: 8 }]}>SHU</Text>
+            <Text style={[TYPE.label14, styles.dropShadowSmall, { marginBottom: 8 }]}>SHU</Text>
           </View>
         </Pressable>
         <View style={[styles.row, { gap: 8 }]}>
           <HeatPepper level={heat.current} width={18} />
-          <Text style={[TYPE.meta20, { color: THERMAL_COLORS.gold }]}>
+          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>
             {`${heat.current.name} · ${getRankLabel(profile.rank)} · HEAT ${heat.current.level}/${MAX_HEAT_LEVEL}`}
           </Text>
         </View>
@@ -285,12 +253,10 @@ function ScaleCell({ color, delay }: { color: string; delay: number }) {
   return <Animated.View style={[{ width: 12, height: 7, backgroundColor: color }, animatedStyle]} />;
 }
 
-function RetentionPanel({ profile }: { profile: Profile }) {
-  const heat = getHeatProgress(profile);
+function StreakPanel({ profile }: { profile: Profile }) {
   const weeks = profile.current_streak_weeks;
-  const tier = getRetentionTier(weeks);
-  const tierIndex = RETENTION_TIERS.indexOf(tier);
-  const repProgress = heat.targetPoints === null ? 1 : heat.targetPoints > 0 ? profile.reputation_points / heat.targetPoints : 0;
+  const next = getNextStreakMilestone(weeks);
+  const daysLeft = getStreakDaysLeft(profile.last_activity_at);
 
   return (
     <Panel index={1}>
@@ -298,49 +264,110 @@ function RetentionPanel({ profile }: { profile: Profile }) {
         <View style={[styles.row, { gap: 10 }]}>
           <FlickerFlame />
           <View>
-            <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>HEAT RETENTION</Text>
+            <Text style={[TYPE.label12, { color: INK.muted }]}>VOTING STREAK</Text>
             <Text style={TYPE.display32}>{weeks === 1 ? '1 WEEK' : `${weeks} WEEKS`}</Text>
           </View>
         </View>
         <WeeklyHeat weeks={weeks} />
       </View>
 
-      <View style={[styles.row, { gap: 4 }]}>
-        {RETENTION_TIERS.map((item, index) => {
-          const isActive = index === tierIndex;
-          const isPast = index < tierIndex;
-          return (
-            <View
-              key={item}
-              style={[
-                styles.tier,
-                { backgroundColor: isActive ? THERMAL_COLORS.orange : isPast ? THERMAL_COLORS.ghost : 'rgba(255,255,255,0.05)' },
-              ]}
-            >
-              <Text
-                style={[
-                  TYPE.label10,
-                  { color: isActive ? THERMAL_COLORS.void : isPast ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.35)' },
-                ]}
-              >
-                {item}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      <DashedDivider />
 
+      {next ? (
+        <View style={styles.between}>
+          <Text style={TYPE.meta18}>{`NEXT BONUS · ${next.weeks} WEEKS`}</Text>
+          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{`+${next.points} REP`}</Text>
+        </View>
+      ) : null}
+      <Text style={[TYPE.meta18, { color: INK.muted }]}>
+        {weeks === 0 || daysLeft === null
+          ? 'Vote on any proposal to start your streak.'
+          : `Vote on any proposal within ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} to keep your streak.`}
+      </Text>
+    </Panel>
+  );
+}
+
+function NextLevelPanel({ profile }: { profile: Profile }) {
+  const heat = getHeatProgress(profile);
+  const repProgress = heat.targetPoints === null ? 1 : heat.targetPoints > 0 ? profile.reputation_points / heat.targetPoints : 0;
+  const requirements = heat.next ? getRequirements(profile, heat.next.rank) : [];
+
+  return (
+    <Panel index={2}>
       <View style={styles.between}>
-        <Text style={TYPE.meta16}>
-          {heat.next ? `TARGET: ${heat.next.name} ${formatShu(heat.next.shu)} SHU` : 'MAX HEAT REACHED'}
-        </Text>
-        <Text style={[TYPE.meta16, { color: THERMAL_COLORS.gold }]}>
-          {heat.targetPoints ? `${profile.reputation_points}/${heat.targetPoints} REP` : `${profile.reputation_points} REP`}
+        <View style={{ flexShrink: 1 }}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>NEXT LEVEL</Text>
+          <Text style={TYPE.meta18} numberOfLines={1}>
+            {heat.next ? `${heat.next.name} · ${getRankLabel(heat.next.rank)}` : 'MAX HEAT REACHED'}
+          </Text>
+        </View>
+        <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>
+          {heat.targetPoints ? `${profile.reputation_points} / ${heat.targetPoints} REP` : `${profile.reputation_points} REP`}
         </Text>
       </View>
       <PixelBar colors={getHeatBarColors(repProgress)} height={8} delay={400} />
+      {requirements.map((item) => (
+        <View key={item.label} style={styles.between}>
+          <View style={[styles.row, { gap: 8, flexShrink: 1 }]}>
+            <View style={[styles.checkBox, { borderColor: item.isDone ? STATUS_COLORS.positive.stroke : THERMAL_COLORS.border }]}>
+              {item.isDone ? <View style={styles.checkFill} /> : null}
+            </View>
+            <Text style={[TYPE.meta18, { color: item.isDone ? INK_DONE : THERMAL_COLORS.white, flexShrink: 1 }]}>
+              {item.label}
+            </Text>
+          </View>
+          <Text style={[TYPE.meta18, { color: item.isDone ? STATUS_COLORS.positive.text : INK.muted }]}>
+            {item.isDone ? 'DONE' : item.remaining}
+          </Text>
+        </View>
+      ))}
     </Panel>
   );
+}
+
+interface Requirement {
+  label: string;
+  isDone: boolean;
+  /** Right-hand text while not done, e.g. "10 TO GO" */
+  remaining: string;
+}
+
+/** What the next rank asks for, in the order a player usually meets it */
+function getRequirements(profile: Profile, rank: Profile['rank']): Array<Requirement> {
+  const rule = RANK_REQUIREMENTS[rank];
+  const items: Array<Requirement> = [];
+
+  if (rule.requiresWallet) {
+    items.push({ label: 'Link your wallet', isDone: Boolean(profile.wallet_address), remaining: 'TO DO' });
+  }
+  if (rule.requiresVote) {
+    items.push({ label: 'Vote on 1 proposal', isDone: profile.has_voted, remaining: 'TO DO' });
+  }
+  if (rule.requiresStreak > 0) {
+    const left = rule.requiresStreak - profile.current_streak_weeks;
+    items.push({ label: `Keep a ${rule.requiresStreak}-week streak`, isDone: left <= 0, remaining: `${left}W TO GO` });
+  }
+  if (rule.requiresEngagedProposal) {
+    items.push({ label: 'Create a proposal that heats up', isDone: profile.has_engaged_proposal, remaining: 'TO DO' });
+  }
+  if (rule.requiresPassedProposal) {
+    items.push({ label: 'Get a proposal passed', isDone: profile.has_passed_proposal, remaining: 'TO DO' });
+  }
+  if (rule.points > 0) {
+    const left = rule.points - profile.reputation_points;
+    items.push({ label: `Earn ${rule.points} REP`, isDone: left <= 0, remaining: `${left} TO GO` });
+  }
+  return items;
+}
+
+/** Whole days left in the 7-day window that keeps the weekly streak alive */
+function getStreakDaysLeft(lastActivityAt: string | null): number | null {
+  if (!lastActivityAt) return null;
+  const last = Date.parse(lastActivityAt);
+  if (!Number.isFinite(last)) return null;
+  const left = Math.ceil((last + STREAK_WINDOW_MS - Date.now()) / DAY_MS);
+  return left > 0 ? left : null;
 }
 
 function FlickerFlame() {
@@ -397,8 +424,8 @@ function HeatLog({ profile }: { profile: Profile }) {
   return (
     <Panel index={4} padding={0} gap={0}>
       <View style={[styles.between, styles.logRow]}>
-        <Text style={TYPE.label10}>HEAT LOG</Text>
-        <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>{`${profile.reputation_points} REP TOTAL`}</Text>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>HEAT LOG</Text>
+        <Text style={[TYPE.meta18, { color: INK.muted }]}>{`${profile.reputation_points} REP TOTAL`}</Text>
       </View>
       {isLoading && activities.length === 0 ? (
         <View style={styles.logRow}>
@@ -409,7 +436,7 @@ function HeatLog({ profile }: { profile: Profile }) {
         <>
           <DashedDivider />
           <View style={styles.logRow}>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>No heat yet — vote on a proposal to spark it.</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>No heat yet — vote on a proposal to spark it.</Text>
           </View>
         </>
       ) : null}
@@ -418,10 +445,10 @@ function HeatLog({ profile }: { profile: Profile }) {
           <DashedDivider />
           <View style={[styles.row, styles.logRow, { gap: 12 }]}>
             <Text style={[TYPE.display24, { width: 40, color: getLogColor(activity) }]}>{getLogPoints(activity)}</Text>
-            <Text style={[TYPE.meta18, { flex: 1, color: 'rgba(255,255,255,0.85)' }]} numberOfLines={1}>
+            <Text style={[TYPE.meta18, { flex: 1 }]} numberOfLines={1}>
               {getLogTitle(activity)}
             </Text>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.4)' }]}>{formatDayMonth(activity.created_at)}</Text>
+            <Text style={[TYPE.meta18, { color: INK.faint }]}>{formatDayMonth(activity.created_at)}</Text>
           </View>
         </Animated.View>
       ))}
@@ -430,7 +457,7 @@ function HeatLog({ profile }: { profile: Profile }) {
 }
 
 function getLogPoints(activity: Activity): string {
-  if (activity.event_type === 'RANK_UP') return 'UP';
+  if (activity.event_type === 'RANK_UP') return 'LVL';
   if (activity.points === 0) return '·';
   return activity.points > 0 ? `+${activity.points}` : `${activity.points}`;
 }
@@ -438,27 +465,38 @@ function getLogPoints(activity: Activity): string {
 function getLogColor(activity: Activity): string {
   if (activity.event_type === 'RANK_UP') return THERMAL_COLORS.gold;
   if (activity.event_type === 'STREAK_MILESTONE') return THERMAL_COLORS.orange;
-  if (activity.points < 0) return THERMAL_COLORS.blue;
+  if (activity.points < 0) return STATUS_COLORS.negative.text;
   return THERMAL_COLORS.cream;
 }
 
 function getLogTitle(activity: Activity): string {
   switch (activity.event_type) {
     case 'RANK_UP':
-      return activity.rank_after ? `RANK UP > ${getRankLabel(activity.rank_after)}` : 'RANK UP';
+      return activity.rank_after ? `LEVEL UP · ${getHeatLevel(activity.rank_after).name}` : 'LEVEL UP';
     case 'STREAK_MILESTONE': {
       const weeks = (activity.metadata as { weeks?: number })?.weeks ?? 0;
       return `STREAK BONUS · ${weeks} WEEKS`;
     }
     case 'VOTE':
-    case 'FIRST_VOTE':
-      return activity.proposal_id !== null ? `VOTED · #${activity.proposal_id}` : 'VOTED';
+    case 'FIRST_VOTE': {
+      const label = activity.event_type === 'FIRST_VOTE' ? 'FIRST VOTE' : 'VOTED';
+      return activity.proposal_id !== null ? `${label} · #${activity.proposal_id}` : label;
+    }
     case 'WALLET_CONNECTED':
       return 'WALLET LINKED';
     default:
       return getEventTitle(activity).toUpperCase();
   }
 }
+
+/** Background animation for the heat camera: 09 FLIP (the approved one) */
+const CORE_VARIANT: PixelCoreVariant = 'flip';
+
+/** Done checklist items fade back (Figma: 50% white) */
+const INK_DONE = 'rgba(255,255,255,0.5)';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STREAK_WINDOW_MS = 7 * DAY_MS;
 
 const STAGE_HEIGHT = 508;
 const ART_SIZE = 110;
@@ -490,15 +528,17 @@ const WEEK_COLORS = [
 
 
 const styles = StyleSheet.create({
-  variantTab: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  checkBox: {
+    width: 14,
+    height: 14,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  variantTabActive: {
-    backgroundColor: THERMAL_COLORS.gold,
-    borderColor: THERMAL_COLORS.gold,
+  checkFill: {
+    width: 6,
+    height: 6,
+    backgroundColor: STATUS_COLORS.positive.stroke,
   },
   row: {
     flexDirection: 'row',
@@ -596,11 +636,6 @@ const styles = StyleSheet.create({
     textShadowColor: '#000000',
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 0.1,
-  },
-  tier: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 4,
   },
   logRow: {
     paddingHorizontal: SPACE.rowX,
