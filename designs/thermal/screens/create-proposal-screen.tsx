@@ -629,21 +629,26 @@ function Input({ minHeight, hasError, style, ...rest }: InputProps) {
   );
 }
 
+/**
+ * Footer backdrop: a fixed-height fade strip above a solid void block. The
+ * solid part stretches with the footer (it grows on the review step), so no
+ * background shows through under the buttons when the content is scrolled.
+ */
 function FooterFade() {
   const { width } = useWindowDimensions();
   // Wrapped so react-native-svg never intercepts taps meant for the buttons
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Svg width={width} height="100%">
+      <Svg width={width} height={FOOTER_FADE}>
         <Defs>
           <LinearGradient id="create-footer" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
-            <Stop offset="0.35" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
             <Stop offset="1" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
           </LinearGradient>
         </Defs>
-        <Rect x="0" y="0" width={width} height="100%" fill="url(#create-footer)" />
+        <Rect x="0" y="0" width={width} height={FOOTER_FADE} fill="url(#create-footer)" />
       </Svg>
+      <View style={styles.footerSolid} />
     </View>
   );
 }
@@ -670,6 +675,8 @@ const NEXT_STEPS = [
 ];
 const FOOTER_HEIGHT = 74;
 const FOOTER_NOTE_HEIGHT = 32;
+/** Fade strip at the top of the footer (= its top padding) */
+const FOOTER_FADE = 24;
 
 const styles = StyleSheet.create({
   root: {
@@ -735,8 +742,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: 24,
+    paddingTop: FOOTER_FADE,
     paddingHorizontal: SPACE.margin,
+  },
+  footerSolid: {
+    position: 'absolute',
+    top: FOOTER_FADE,
+    left: 0,
+    right: 0,
+    // Run past the bottom edge so an overscroll bounce never shows a gap
+    bottom: -FOOTER_FADE * 4,
+    backgroundColor: THERMAL_COLORS.void,
   },
   actions: {
     flexDirection: 'row',
