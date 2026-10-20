@@ -24,7 +24,7 @@ import { VoteSheet } from '../components/vote-sheet';
 import { RepSticker, VoteStamp } from '../components/vote-stamp';
 import { useCountUp } from '../hooks/use-count-up';
 import { createDemoProposal, isDemoProposalId } from '../lib/demo-vote';
-import { formatAgo, formatCompact, formatCountdown, shortenAddress, tokenToNumber } from '../lib/format';
+import { formatCompact, formatCountdown, formatShortDate, shortenAddress, tokenToNumber } from '../lib/format';
 import {
   getActionSummary,
   getProposalDescription,
@@ -59,7 +59,9 @@ export function ProposalDetailScreen() {
   const [pendingOption, setPendingOption] = useState<Exclude<VoteOption, 'NONE'> | null>(null);
   const [freshVote, setFreshVote] = useState<FreshVote | null>(null);
 
-  const canVote = proposal?.type === 'PEP';
+  const isCouncil = proposal ? proposal.type !== 'PEP' : false;
+  // The dock stays for open and upcoming community votes; ended ones have nothing to press
+  const canVote = proposal?.type === 'PEP' && (proposal.status === 'ACTIVE' || proposal.status === 'PENDING');
   const dockHeight = canVote ? DOCK_HEIGHT : 0;
 
   function handleBack() {
@@ -126,34 +128,46 @@ export function ProposalDetailScreen() {
       {proposal ? (
         <>
           <View style={[styles.row, { gap: 10 }]}>
-            {proposal.status === 'ACTIVE' ? (
+            {isCouncil ? (
+              <Tag label="COUNCIL DECISION" color={INK.muted} variant="outline" />
+            ) : proposal.status === 'ACTIVE' ? (
               <LiveMarker label="LIVE" />
             ) : (
               <StatusTag label={STATUS_TAGS[proposal.status].label} status={STATUS_TAGS[proposal.status].kind} />
             )}
-            <Tag label={getTrackLong(proposal)} color={INK.muted} variant="outline" />
+            {isCouncil ? null : <Tag label={getTrackLong(proposal)} color={INK.muted} variant="outline" />}
           </View>
 
           <View style={{ gap: 12 }}>
             <Text style={TYPE.display32}>{getProposalTitle(proposal)}</Text>
             <View style={[styles.row, { gap: 6, flexWrap: 'wrap' }]}>
               <Touchable onPress={() => void Linking.openURL(`${EXPLORER_URL}/address/${proposal.proposer}`)}>
-                <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{`by ${shortenAddress(proposal.proposer)}`}</Text>
+                <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>
+                  {isCouncil ? 'by Council multisig' : `by ${shortenAddress(proposal.proposer)}`}
+                </Text>
               </Touchable>
               <Text style={[TYPE.meta18, { color: INK.muted }]}>{`· ${getTimingLabel(proposal)}`}</Text>
             </View>
           </View>
 
-          <ResultsPanel proposal={proposal} recordedOption={recordedOption} freshVote={freshVote} />
+          {proposal.status === 'EXECUTED' ? <ExecutedBanner proposal={proposal} /> : null}
 
-          <StepsPanel proposal={proposal} />
+          {isCouncil ? (
+            <CouncilPanel proposal={proposal} />
+          ) : proposal.status === 'PENDING' ? (
+            <NotOpenPanel proposal={proposal} />
+          ) : (
+            <ResultsPanel proposal={proposal} recordedOption={recordedOption} freshVote={freshVote} />
+          )}
+
+          {isCouncil ? null : <StepsPanel proposal={proposal} />}
 
           {getProposalDescription(proposal) ? <Summary text={getProposalDescription(proposal)} /> : null}
 
           {proposal.actions.length > 0 ? (
             <View style={{ gap: 10 }}>
               <SectionLabel
-                label={`WHAT THIS PROPOSAL DOES · ${proposal.actions.length} ${proposal.actions.length === 1 ? 'ACTION' : 'ACTIONS'}`}
+                label={`WHAT THIS ${isCouncil ? 'DOES' : 'PROPOSAL DOES'} · ${proposal.actions.length} ${proposal.actions.length === 1 ? 'ACTION' : 'ACTIONS'}`}
               />
               {proposal.actions.map((action, index) => {
                 const summary = getActionSummary(action);
@@ -207,7 +221,14 @@ function ResultsPanel({ proposal, recordedOption, freshVote }: ResultsPanelProps
   const settings = proposal.votingSettings;
   const total = proposal.totalVotingPower;
 
-  const header = (
+  const isEnded = proposal.status !== 'ACTIVE' && proposal.status !== 'PENDING';
+
+  const header = isEnded ? (
+    <View style={styles.between}>
+      <Text style={[TYPE.label12, { color: INK.muted }]}>FINAL RESULT</Text>
+      {recordedOption ? <Text style={TYPE.label12}>{`YOU VOTED ${recordedOption}`}</Text> : null}
+    </View>
+  ) : (
     <View style={styles.between}>
       <Text style={[TYPE.label12, { color: INK.muted }]}>RESULTS</Text>
       <View style={[styles.row, { gap: 10 }]}>
@@ -240,6 +261,21 @@ function ResultsPanel({ proposal, recordedOption, freshVote }: ResultsPanelProps
     );
   }
 
+  if (isEnded && split.yes + split.no + split.abstain === 0) {
+    const ministersBlocked = proposal.approvals < proposal.minApprovals;
+    return (
+      <Panel index={2}>
+        {header}
+        <Text style={[TYPE.display32, { color: INK_DIM }]}>NO VOTE HELD</Text>
+        <Text style={[TYPE.body14, { color: INK.muted }]}>
+          {ministersBlocked
+            ? "Ministers didn't approve it, so the community vote never opened."
+            : 'No vePEPPER was cast before voting closed.'}
+        </Text>
+      </Panel>
+    );
+  }
+
   const support = basisPointsToPercentage(calculateCurrentSupport(tally));
   const participation = total ? basisPointsToPercentage(calculateParticipation(tally, total)) : null;
   const rows: Array<{ label: string; color: string; percent: number; amount: string }> = [
@@ -256,7 +292,7 @@ function ResultsPanel({ proposal, recordedOption, freshVote }: ResultsPanelProps
         <Text style={[TYPE.label14, { color: THERMAL_COLORS.cream, marginBottom: 6 }]}>YES</Text>
       </View>
       <PixelBar colors={getVoteBarColors(split)} height={14} delay={300} shimmer={proposal.status === 'ACTIVE'} />
-      {rows.map((row) => (
+      {isEnded ? null : rows.map((row) => (
         <View key={row.label} style={styles.between}>
           <View style={[styles.row, { gap: 8 }]}>
             <View style={{ width: 8, height: 8, backgroundColor: row.color }} />
@@ -363,11 +399,13 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
     ? isDemoProposalId(proposal.id)
       ? `Test vote (not on-chain) · ${selected}`
       : `You voted ${selected} · recorded on Chiliz`
-    : !isOpen
-      ? 'Voting is closed for this proposal'
-      : selected
-        ? `You voted ${selected} · tap to change`
-        : 'Your vePEPPER sets the temperature';
+    : proposal.status === 'PENDING'
+      ? `Voting opens in ${formatCountdown(proposal.startDate).toLowerCase()}`
+      : !isOpen
+        ? 'Voting is closed for this proposal'
+        : selected
+          ? `You voted ${selected} · tap to change`
+          : 'Your vePEPPER sets the temperature';
   const showTx = Boolean(freshTx) && !isDemoProposalId(proposal.id);
 
   return (
@@ -422,9 +460,85 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
 }
 
 function getTimingLabel(proposal: GovernanceProposal): string {
+  if (proposal.type === 'ADMIN') return 'admin action · auto-approved';
+  if (proposal.type !== 'PEP') {
+    return `${proposal.approvals} ${proposal.approvals === 1 ? 'approval' : 'approvals'} so far`;
+  }
   if (proposal.status === 'ACTIVE') return `ends in ${formatCountdown(proposal.endDate).toLowerCase()}`;
-  if (proposal.status === 'PENDING') return `starts in ${formatCountdown(proposal.startDate).toLowerCase()}`;
-  return `ended ${formatAgo(proposal.endDate).toLowerCase()}`;
+  if (proposal.status === 'PENDING') return `voting opens in ${formatCountdown(proposal.startDate).toLowerCase()}`;
+  return `ended ${toSentenceDate(formatShortDate(proposal.endDate))}`;
+}
+
+/** "2 SEP 2025" → "2 Sep 2025" */
+function toSentenceDate(value: string): string {
+  return value.replace(/[A-Z]{3}/, (month) => month[0] + month.slice(1).toLowerCase());
+}
+
+/** Executed proposals lead with what actually happened */
+function ExecutedBanner({ proposal }: { proposal: GovernanceProposal }) {
+  const firstAction = proposal.actions[0] ? getActionSummary(proposal.actions[0]) : null;
+  const date = toSentenceDate(formatShortDate(proposal.executedAt ?? proposal.endDate));
+
+  return (
+    <Panel live index={1} gap={6}>
+      <Text style={TYPE.label12}>{proposal.type === 'PEP' ? 'PASSED · EXECUTED ON-CHAIN' : 'EXECUTED ON-CHAIN'}</Text>
+      <Text style={[TYPE.meta18, { color: INK.muted }]}>{firstAction ? `${date} · ${firstAction.title}` : date}</Text>
+    </Panel>
+  );
+}
+
+/** Upcoming community vote: ministers still reviewing */
+function NotOpenPanel({ proposal }: { proposal: GovernanceProposal }) {
+  return (
+    <Panel index={2}>
+      <Text style={[TYPE.label12, { color: INK.muted }]}>RESULTS</Text>
+      <Text style={[TYPE.display32, { color: INK_DIM }]}>NOT OPEN YET</Text>
+      <Text style={[TYPE.body14, { color: INK.muted }]}>
+        {`Ministers are reviewing this proposal. Community voting opens once ${proposal.minApprovals} approve.`}
+      </Text>
+      <View style={styles.between}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>MINISTERS</Text>
+        <Text style={TYPE.meta18}>{`${proposal.approvals} / ${proposal.minApprovals} APPROVED`}</Text>
+      </View>
+    </Panel>
+  );
+}
+
+/** Council (multisig / admin) proposals: nothing to vote on, only approvals */
+function CouncilPanel({ proposal }: { proposal: GovernanceProposal }) {
+  const isDone = proposal.status === 'EXECUTED' || proposal.approvals >= proposal.minApprovals;
+
+  if (proposal.type === 'ADMIN') {
+    return (
+      <Panel index={2}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>NO COMMUNITY VOTE</Text>
+        <Text style={TYPE.body14}>Admin actions run on-chain automatically. There is nothing to vote on.</Text>
+      </Panel>
+    );
+  }
+
+  return (
+    <>
+      <Panel index={2}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>NO COMMUNITY VOTE</Text>
+        <Text style={TYPE.body14}>
+          {`Council decisions run on-chain once ${proposal.minApprovals} council members approve. You can follow along, but there is nothing to vote on.`}
+        </Text>
+      </Panel>
+      <Panel index={3}>
+        <View style={styles.between}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>APPROVALS</Text>
+          <Text style={TYPE.meta18}>{`${proposal.approvals} / ${proposal.minApprovals}`}</Text>
+        </View>
+        <View style={styles.between}>
+          <Text style={[TYPE.meta18, { color: INK.muted }]}>
+            {isDone ? 'Threshold reached' : `${proposal.minApprovals - proposal.approvals} more needed`}
+          </Text>
+          <StatusTag label={isDone ? 'APPROVED' : 'WAITING'} status={isDone ? 'positive' : 'waiting'} />
+        </View>
+      </Panel>
+    </>
+  );
 }
 
 interface FreshVote {
@@ -443,6 +557,9 @@ const STEP_BOX: Record<StageState, { box: object; number: string }> = {
   waiting: { box: { borderWidth: 2, borderColor: STATUS_COLORS.waiting.stroke }, number: STATUS_COLORS.waiting.text },
   failed: { box: { borderWidth: 2, borderColor: STATUS_COLORS.negative.stroke }, number: STATUS_COLORS.negative.text },
 };
+
+/** "NOT OPEN YET" sits faded (Figma: 50%) */
+const INK_DIM = 'rgba(255,255,255,0.5)';
 
 const SUMMARY_PREVIEW_CHARS = 220;
 const DOCK_HEIGHT = 128;
