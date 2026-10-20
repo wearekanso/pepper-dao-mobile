@@ -12,7 +12,7 @@ import Animated, {
 import Svg, { Path } from 'react-native-svg';
 
 import { TIMING } from '../motion';
-import { THERMAL_COLORS } from '../theme';
+import { SIZE, THERMAL_COLORS } from '../theme';
 
 interface HeatBurstProps {
   width: number;
@@ -338,7 +338,8 @@ const SHAPE_SDFS: Record<Exclude<HeatShape, 'pulse'>, (x: number, y: number) => 
 };
 
 
-const BURST_CELL = 12;
+/** Sensor grid cell: pixel art sits on the 10pt grid (theme SIZE.pixelCell) */
+const BURST_CELL = SIZE.pixelCell;
 const FLOW_PULSE_MS = 1800;
 const FLOW_DRIFT_MS = 4200;
 const FLOW_DRIFT_PT = 28;

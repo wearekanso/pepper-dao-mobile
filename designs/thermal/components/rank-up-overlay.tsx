@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Modal, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -5,17 +6,18 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } fro
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUser } from '@/contexts/user-context';
-import { RANK_ORDER } from '@/lib/reputation';
+import { RANK_IMAGES } from '@/lib/rank-images';
+import { RANK_ORDER, RANK_REQUIREMENTS } from '@/lib/reputation';
 import { StorageService } from '@/lib/storage';
 import type { Rank } from '@/types/user';
 
 import { formatInteger } from '../lib/format';
-import { formatShu, getHeatLevel, getNextHeatLevel, getRankLabel, MAX_HEAT_LEVEL } from '../lib/heat-levels';
+import { getHeatLevel, getNextHeatLevel, getRankLabel, MAX_HEAT_LEVEL } from '../lib/heat-levels';
 import { DURATION, fadeIn, revealAt, STAGGER, TIMING } from '../motion';
-import { THERMAL_COLORS, TYPE } from '../theme';
+import { INK, THERMAL_COLORS, TYPE } from '../theme';
 import { HeatBurst, Sparks } from './heat-burst';
-import { HeatPepper } from './pixel-art';
 import { PixelButton } from './pixel-button';
+import { SensorGrid } from './thermal-background';
 
 interface RankUpContextValue {
   /** Shows the overlay for the current rank (or a demo jump) without a real rank change */
@@ -98,31 +100,27 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
       <Animated.View entering={fadeIn()} style={[styles.root, { width, height }]}>
         <HeatBurst width={width} height={height} />
         <Sparks width={width} height={height} />
+        <SensorGrid width={width} height={height} />
 
-        <View style={[styles.center, { top: height * 0.17 }]}>
+        <View style={[styles.center, { top: height * 0.15 }]}>
           <Animated.View entering={revealAt(0)} style={styles.badge}>
-            <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold }]}>NEW HEAT LEVEL UNLOCKED</Text>
+            <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>NEW HEAT LEVEL</Text>
           </Animated.View>
 
-          <BouncingPepper levelRank={transition.to} />
+          <BouncingMascot levelRank={transition.to} />
 
-          <Animated.Text entering={revealAt(1)} style={[TYPE.display72, styles.ink, { marginTop: 10 }]}>
+          <Animated.Text entering={revealAt(1)} style={[TYPE.display72, styles.ink]}>
             LEVEL UP
           </Animated.Text>
-          <Animated.Text entering={revealAt(2)} style={[TYPE.meta26, styles.ink]}>
-            {`${getRankLabel(transition.from)}  >  ${getRankLabel(transition.to)}`}
-          </Animated.Text>
 
-          <Animated.View entering={revealAt(3)}>
+          <Animated.View entering={revealAt(2)}>
             <View>
               <View style={[styles.cardShadow]} />
               <View style={styles.card}>
                 <Text style={[TYPE.display40, { color: THERMAL_COLORS.cream }]}>{level.name}</Text>
-                <Text style={[TYPE.meta20, { color: THERMAL_COLORS.orange }]}>
-                  {`${formatInteger(level.shu)} SHU · HEAT ${level.level} / ${MAX_HEAT_LEVEL}`}
-                </Text>
-                <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>
-                  {next ? `NEXT: ${next.name} · ${formatShu(next.shu)} SHU` : 'MAXIMUM HEAT REACHED'}
+                <Text style={[TYPE.meta18, { color: INK.body }]}>{`LEVEL ${level.level} OF ${MAX_HEAT_LEVEL}`}</Text>
+                <Text style={[TYPE.label12, { color: INK.muted }]}>
+                  {next ? `NEXT: ${next.name} · ${getNextRequirement(next.rank)}` : 'MAXIMUM HEAT REACHED'}
                 </Text>
               </View>
             </View>
@@ -130,18 +128,29 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
         </View>
 
         <Animated.View
-          entering={revealAt(4)}
+          entering={revealAt(3)}
           style={[styles.actions, { bottom: insets.bottom + 24 }]}
         >
-          <PixelButton label="CONTINUE >" variant="void" onPress={onClose} />
-          <PixelButton label="SHARE MY HEAT" variant="paper" onPress={() => void handleShare()} />
+          <PixelButton label="CONTINUE >" variant="gold" onPress={onClose} />
+          <PixelButton label="SHARE MY LEVEL CARD" variant="outline" onPress={() => void handleShare()} />
         </Animated.View>
       </Animated.View>
     </Modal>
   );
 }
 
-function BouncingPepper({ levelRank }: { levelRank: Rank }) {
+/** "250 REP + 4-WEEK STREAK" — what the next rank asks for */
+function getNextRequirement(rank: Rank): string {
+  const rule = RANK_REQUIREMENTS[rank];
+  const parts = [`${rule.points} REP`];
+  if (rule.requiresStreak > 0) parts.push(`${rule.requiresStreak}-WEEK STREAK`);
+  if (rule.requiresEngagedProposal) parts.push('A PROPOSAL THAT HEATS UP');
+  if (rule.requiresPassedProposal) parts.push('A PASSED PROPOSAL');
+  return parts.join(' + ');
+}
+
+/** The new rank's mascot drops in (same drop as before, now the rank art) */
+function BouncingMascot({ levelRank }: { levelRank: Rank }) {
   const drop = useSharedValue(0);
 
   useEffect(() => {
@@ -154,13 +163,8 @@ function BouncingPepper({ levelRank }: { levelRank: Rank }) {
   }));
 
   return (
-    <Animated.View style={[{ paddingVertical: 8 }, animatedStyle]}>
-      <View>
-        <View style={{ position: 'absolute', left: 6, top: 6 }}>
-          <HeatPepper level={getHeatLevel(levelRank)} silhouette={THERMAL_COLORS.void} />
-        </View>
-        <HeatPepper level={getHeatLevel(levelRank)} />
-      </View>
+    <Animated.View style={animatedStyle}>
+      <Image source={RANK_IMAGES[levelRank] as number} style={{ width: MASCOT_SIZE, height: MASCOT_SIZE }} contentFit="contain" />
     </Animated.View>
   );
 }
@@ -171,6 +175,7 @@ interface RankTransition {
 }
 
 const LAST_RANK_KEY = 'thermal:last_rank';
+const MASCOT_SIZE = 170;
 const styles = StyleSheet.create({
   root: {
     backgroundColor: THERMAL_COLORS.void,
@@ -193,7 +198,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: THERMAL_COLORS.void,
-    paddingHorizontal: 18,
+    paddingHorizontal: 22,
     paddingVertical: 14,
     alignItems: 'center',
     gap: 4,
@@ -210,6 +215,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    gap: 14,
+    gap: 12,
   },
 });
