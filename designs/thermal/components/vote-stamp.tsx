@@ -24,6 +24,8 @@ interface VoteStampProps {
   date?: Date;
   /** Slam the stamp in (fresh vote) instead of just showing it */
   slam: boolean;
+  /** `mini` sits in the results header; `large` is the hero of the vote-recorded sheet */
+  size?: 'mini' | 'large';
 }
 
 /**
@@ -31,7 +33,8 @@ interface VoteStampProps {
  * slams down from above with a heavy haptic; otherwise it fades in already
  * pressed on.
  */
-export function VoteStamp({ option, date, slam }: VoteStampProps) {
+export function VoteStamp({ option, date, slam, size = 'mini' }: VoteStampProps) {
+  const isLarge = size === 'large';
   const progress = useSharedValue(slam ? 0 : 1);
   const opacity = useSharedValue(0);
 
@@ -62,8 +65,8 @@ export function VoteStamp({ option, date, slam }: VoteStampProps) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.stamp, animatedStyle]}>
-      <View style={styles.inner}>
-        <Text style={[TYPE.meta18, styles.ink]}>VOTED</Text>
+      <View style={[styles.inner, isLarge && styles.innerLarge]}>
+        <Text style={[isLarge ? TYPE.display40 : TYPE.meta18, styles.ink]}>VOTED</Text>
         <Text style={[TYPE.label12, styles.ink]}>{date ? `${option} · ${formatDayMonth(date.toISOString())}` : option}</Text>
       </View>
     </Animated.View>
@@ -125,6 +128,12 @@ const styles = StyleSheet.create({
     borderColor: THERMAL_COLORS.red,
     paddingHorizontal: 8,
     paddingVertical: 2,
+  },
+  innerLarge: {
+    flexDirection: 'column',
+    gap: 2,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
   },
   ink: {
     color: THERMAL_COLORS.red,

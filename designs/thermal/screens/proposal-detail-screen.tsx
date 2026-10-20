@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useGovernanceProposal } from '@/hooks/use-governance';
-import { REPUTATION_POINTS } from '@/lib/reputation';
 import {
   basisPointsToPercentage,
   calculateCurrentSupport,
@@ -72,9 +71,9 @@ export function ProposalDetailScreen() {
     setPendingOption(option);
   }
 
-  function handleVoteSuccess(txHash: string, option: VoteOption) {
+  function handleVoteSuccess(txHash: string, option: VoteOption, points: number) {
     if (option === 'NONE') return;
-    setFreshVote({ option, txHash, date: new Date() });
+    setFreshVote({ option, txHash, date: new Date(), points });
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
@@ -211,13 +210,13 @@ function ResultsPanel({ proposal, recordedOption, freshVote }: ResultsPanelProps
     <View style={styles.between}>
       <Text style={[TYPE.label12, { color: INK.muted }]}>RESULTS</Text>
       <View style={[styles.row, { gap: 10 }]}>
-        {freshVote ? <RepSticker points={REPUTATION_POINTS.VOTE} /> : null}
+        {freshVote ? <RepSticker points={freshVote.points} /> : null}
         {recordedOption ? (
           <VoteStamp
             key={freshVote?.txHash ?? 'recorded'}
             option={recordedOption}
             date={freshVote?.date}
-            slam={Boolean(freshVote)}
+            slam={false}
           />
         ) : null}
       </View>
@@ -418,6 +417,8 @@ interface FreshVote {
   option: Exclude<VoteOption, 'NONE'>;
   txHash: string;
   date: Date;
+  /** REP the vote earned (first vote pays more) */
+  points: number;
 }
 
 const VOTE_OPTIONS: Array<Exclude<VoteOption, 'NONE'>> = ['YES', 'NO', 'ABSTAIN'];
