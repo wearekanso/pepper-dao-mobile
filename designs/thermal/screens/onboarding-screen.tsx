@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,10 +15,10 @@ import { telemetry } from '@/lib/telemetry';
 import type { Rank } from '@/types/user';
 
 import { DashedDivider, Touchable } from '../components/atoms';
-import { HeatBurst, type HeatShape, Sparks } from '../components/heat-burst';
 import { HardShadow } from '../components/panel';
 import { PixelButton } from '../components/pixel-button';
-import { SensorGrid } from '../components/thermal-background';
+import { PixelCore } from '../components/pixel-core';
+import { getHeatHotspot, sampleHeatColor, ThermalBackground } from '../components/thermal-background';
 import { NavIconButton } from '../components/thermal-nav-bar';
 import { HEAT_LEVELS } from '../lib/heat-levels';
 import { stepIn, stepOut } from '../motion';
@@ -30,9 +30,10 @@ interface OnboardingScreenProps {
 }
 
 /**
- * First-run briefing in four steps over a heat burst that morphs per step
- * (pulse → check → bolt → glow). The last step links a wallet or lets the
- * user explore as a guest. Figma: "Onboarding · 1–4 · V2".
+ * First-run briefing in four steps over the Power heat camera's backdrop:
+ * the same "power" thermal background with the 09 FLIP pixel wave rolling
+ * out of its hot spot. The last step links a wallet or lets the user
+ * explore as a guest. Figma: "Onboarding · 1–4 · V2".
  */
 export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
@@ -41,6 +42,9 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
   const [index, setIndex] = useState(0);
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
+  // Same backdrop + flip wave as the Power header, full screen
+  const hotspot = getHeatHotspot(BACKDROP, width);
+  const sampleColor = useCallback((x: number, y: number) => sampleHeatColor(BACKDROP, width, x, y), [width]);
 
   useEffect(() => {
     telemetry.track('onboarding_started');
@@ -73,10 +77,16 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
 
   return (
     <View style={styles.root}>
-      <HeatBurst width={width} height={height} centerY={step.centerY} shape={step.shape} morph flow />
-      <Sparks width={width} height={height} />
+      <ThermalBackground preset={BACKDROP} />
+      <PixelCore
+        width={width}
+        height={height}
+        centerX={hotspot.x}
+        centerY={hotspot.y}
+        sampleColor={sampleColor}
+        variant="flip"
+      />
       <Fades width={width} height={height} />
-      <SensorGrid width={width} height={height} />
 
       <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.top}>
@@ -230,9 +240,6 @@ type StepKind = 'chips' | 'levels' | 'wallet';
 
 interface Step {
   kind: StepKind;
-  /** Heat character behind this step */
-  shape: HeatShape;
-  centerY: number;
   mascot: Rank;
   badge: string;
   chips: Array<{ label: string; color: string }>;
@@ -243,8 +250,6 @@ interface Step {
 const STEPS: Array<Step> = [
   {
     kind: 'chips',
-    shape: 'pulse',
-    centerY: 0.08,
     mascot: 'OBSERVER',
     badge: 'LIVE · DAO TREASURY',
     chips: [
@@ -257,8 +262,6 @@ const STEPS: Array<Step> = [
   },
   {
     kind: 'chips',
-    shape: 'check',
-    centerY: 0.235,
     mascot: 'MEMBER',
     badge: 'YOUR VOTE COUNTS',
     chips: [
@@ -271,8 +274,6 @@ const STEPS: Array<Step> = [
   },
   {
     kind: 'levels',
-    shape: 'bolt',
-    centerY: 0.235,
     mascot: 'PARTICIPANT',
     badge: '6 HEAT LEVELS',
     chips: [],
@@ -281,9 +282,6 @@ const STEPS: Array<Step> = [
   },
   {
     kind: 'wallet',
-    shape: 'pulse',
-    // Core sits high so the copy and mode list stay on a dark ground
-    centerY: 0.02,
     mascot: 'STEWARD',
     badge: '',
     chips: [],
@@ -308,6 +306,8 @@ const MODES = [
   { title: 'POWER', hint: 'Stake, earn REP, level up', icon: require('@/assets/images/pepper/burn.png') },
 ];
 
+/** The Power screen's thermal preset — its hot spot is where the flip wave starts */
+const BACKDROP = 'power';
 const MASCOT_SIZE = 190;
 const TOP_FADE = 120;
 /** Upcoming progress cells (Figma: 20% white) */
