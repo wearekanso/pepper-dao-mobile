@@ -12,7 +12,12 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedKeyboard,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -147,6 +152,12 @@ export function CreateProposalScreen() {
   });
 
   const canSubmit = isConnected && form.title.trim().length > 0 && !isSubmitting;
+  // The footer rides up with the keyboard so NEXT stays reachable while typing
+  const keyboard = useAnimatedKeyboard();
+  const footerKeyboardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.height.value + FOOTER_KEYBOARD_GAP - insets.bottom - 16) }],
+  }));
+
   // The review stage adds a "1 transaction" line above the buttons
   const footerSpace = FOOTER_HEIGHT + insets.bottom + 24 + (stage === 2 ? FOOTER_NOTE_HEIGHT : 0);
 
@@ -229,7 +240,7 @@ export function CreateProposalScreen() {
       />
 
       {isBlocked ? null : (
-        <View pointerEvents="box-none" style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        <Animated.View pointerEvents="box-none" style={[styles.footer, { paddingBottom: insets.bottom + 16 }, footerKeyboardStyle]}>
           <FooterFade />
           {stage === 2 ? (
             <View style={[styles.between, { marginBottom: 12 }]}>
@@ -258,7 +269,7 @@ export function CreateProposalScreen() {
               </>
             )}
           </View>
-        </View>
+        </Animated.View>
       )}
 
       <StakeSheet visible={isStakeOpen} onClose={() => setIsStakeOpen(false)} />
@@ -675,6 +686,8 @@ const FOOTER_HEIGHT = 74;
 const FOOTER_NOTE_HEIGHT = 32;
 /** Fade strip at the top of the footer (= its top padding) */
 const FOOTER_FADE = 24;
+/** Space between the footer buttons and the top of the keyboard */
+const FOOTER_KEYBOARD_GAP = 12;
 
 const styles = StyleSheet.create({
   root: {
