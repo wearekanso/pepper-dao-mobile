@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -5,16 +6,23 @@ import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useUser } from '@/contexts/user-context';
+import { useWallet } from '@/contexts/wallet-context';
+import { RANK_IMAGES } from '@/lib/rank-images';
+import { REPUTATION_POINTS } from '@/lib/reputation';
+import { STORAGE_KEYS, StorageService } from '@/lib/storage';
 import { telemetry } from '@/lib/telemetry';
+import type { Rank } from '@/types/user';
 
-import { Touchable } from '../components/atoms';
+import { DashedDivider, Touchable } from '../components/atoms';
 import { HeatBurst, type HeatShape, Sparks } from '../components/heat-burst';
-import { Panel } from '../components/panel';
-import { PixelBar } from '../components/pixel-bar';
+import { HardShadow } from '../components/panel';
 import { PixelButton } from '../components/pixel-button';
 import { SensorGrid } from '../components/thermal-background';
+import { NavIconButton } from '../components/thermal-nav-bar';
+import { HEAT_LEVELS } from '../lib/heat-levels';
 import { stepIn, stepOut } from '../motion';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { INK, SIZE, SPACE, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -22,12 +30,14 @@ interface OnboardingScreenProps {
 }
 
 /**
- * First-run recruit briefing: three steps over a heat burst that cools down
- * into the void. Figma: "Onboarding C — sol hizalı · heat burst".
+ * First-run briefing in four steps over a heat burst that morphs per step
+ * (pulse → check → bolt → glow). The last step links a wallet or lets the
+ * user explore as a guest. Figma: "Onboarding · 1–4 · V2".
  */
 export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const { connect } = useWallet();
   const [index, setIndex] = useState(0);
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
@@ -37,14 +47,10 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
   }, []);
 
   useEffect(() => {
-    telemetry.track('onboarding_step_viewed', { step: index + 1, stepTitle: STEPS[index].title.replace('\n', ' ') });
+    telemetry.track('onboarding_step_viewed', { step: index + 1, stepTitle: STEPS[index].title });
   }, [index]);
 
   function handleNext() {
-    if (isLast) {
-      onComplete();
-      return;
-    }
     setIndex((previous) => Math.min(previous + 1, STEPS.length - 1));
   }
 
@@ -58,111 +64,257 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
     onSkip();
   }
 
+  /** The wallet step replaces the separate post-onboarding wallet prompt */
+  function finish(linkWallet: boolean) {
+    StorageService.setBoolean(STORAGE_KEYS.ONBOARDING_DISMISSED, true);
+    onComplete();
+    if (linkWallet) void connect();
+  }
+
   return (
     <View style={styles.root}>
-      <HeatBurst width={width} height={height} centerY={step.shape === 'pulse' ? 0.08 : SHAPE_CENTER_Y} shape={step.shape} morph flow />
+      <HeatBurst width={width} height={height} centerY={step.centerY} shape={step.shape} morph flow />
       <Sparks width={width} height={height} />
-      <BottomFade width={width} height={height} />
+      <Fades width={width} height={height} />
       <SensorGrid width={width} height={height} />
 
-      <View style={[styles.content, { paddingTop: insets.top + 4, paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.hud}>
-          <View style={styles.tag}>
-            <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold }]}>{`NEW RECRUIT · STEP ${step.number}`}</Text>
+      <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}>
+        <View style={styles.top}>
+          {index > 0 ? <NavIconButton icon="back" onPress={handleBack} /> : null}
+          <View style={styles.progress}>
+            {STEPS.map((item, stepIndex) => (
+              <View
+                key={item.title}
+                style={[styles.progressCell, { backgroundColor: stepIndex <= index ? THERMAL_COLORS.gold : PROGRESS_TODO }]}
+              />
+            ))}
           </View>
-          <Touchable onPress={handleSkip} hitSlop={10} pressedOpacity={0.7} style={styles.skip}>
-            <Text style={TYPE.label12}>SKIP {'>'}</Text>
-          </Touchable>
+          {isLast ? null : (
+            <Touchable onPress={handleSkip} hitSlop={10} pressedOpacity={0.7} style={styles.skip}>
+              <Text style={TYPE.label12}>{'SKIP >'}</Text>
+            </Touchable>
+          )}
         </View>
 
         <View style={{ flex: 1 }} />
 
-        <Animated.View
-          key={step.number}
-          entering={stepIn()}
-          exiting={stepOut()}
-          style={styles.step}
-        >
-          <Text style={[TYPE.display72, styles.inkShadow, { color: THERMAL_COLORS.gold }]}>{step.number}</Text>
-          <Text style={[TYPE.display58, styles.inkShadow]}>{step.title}</Text>
-          <Panel>
-            <Text style={[TYPE.label10, { color: THERMAL_COLORS.orange }]}>{step.eyebrow}</Text>
-            <Text style={TYPE.body14}>{step.body}</Text>
-          </Panel>
+        <Animated.View key={step.title} entering={stepIn()} exiting={stepOut()} style={styles.step}>
+          <Mascot rank={step.mascot} />
+
+          {step.kind === 'wallet' ? (
+            <WalletStep />
+          ) : (
+            <>
+              <View style={styles.badge}>
+                <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{step.badge}</Text>
+              </View>
+              {step.kind === 'levels' ? <LevelLadder /> : <ChipRow chips={step.chips} />}
+              <View style={styles.copy}>
+                <Text style={[TYPE.display40, styles.title]}>{step.title}</Text>
+                <Text style={[TYPE.meta18, styles.body]}>{step.body}</Text>
+              </View>
+            </>
+          )}
         </Animated.View>
 
-        <PixelBar colors={progressColors(index)} height={6} gap={3} delay={0} />
-
-        <View style={styles.actions}>
-          {index > 0 ? <PixelButton label="< BACK" variant="outline" style={{ alignSelf: 'auto' }} onPress={handleBack} /> : null}
-          <PixelButton label={isLast ? 'GET STARTED >' : 'NEXT >'} variant="gold" style={{ flex: 1 }} onPress={handleNext} />
+        <View style={{ gap: 12 }}>
+          {isLast ? (
+            <>
+              <PixelButton label="CONNECT WALLET >" variant="gold" onPress={() => finish(true)} />
+              <PixelButton label="EXPLORE AS GUEST" variant="outline" onPress={() => finish(false)} />
+            </>
+          ) : (
+            <PixelButton label="NEXT >" variant="gold" onPress={handleNext} />
+          )}
         </View>
       </View>
     </View>
   );
 }
 
-/** Cools the burst into the void so the copy sits on a dark ground */
-function BottomFade({ width, height }: { width: number; height: number }) {
+function Mascot({ rank }: { rank: Rank }) {
+  return (
+    <Image source={RANK_IMAGES[rank] as number} style={{ width: MASCOT_SIZE, height: MASCOT_SIZE }} contentFit="contain" />
+  );
+}
+
+function ChipRow({ chips }: { chips: Array<{ label: string; color: string }> }) {
+  return (
+    <View style={[styles.row, { gap: 8 }]}>
+      {chips.map((chip) => (
+        <View key={chip.label} style={styles.chip}>
+          <View style={{ width: 8, height: 8, backgroundColor: chip.color }} />
+          <Text style={TYPE.label12}>{chip.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Six heat levels as rising bars; the user's own level is lit */
+function LevelLadder() {
+  const { profile } = useUser();
+  const current = profile?.rank ?? 'OBSERVER';
+
+  return (
+    <View style={styles.ladder}>
+      {LADDER.map((item) => (
+        <View key={item.rank} style={styles.ladderStep}>
+          <View style={{ alignSelf: 'stretch', height: item.height, backgroundColor: item.color }} />
+          <Text style={[TYPE.label12, { color: item.rank === current ? THERMAL_COLORS.white : INK.muted }]}>
+            {HEAT_LEVELS[item.rank].name.slice(0, item.letters)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Last step: what the three tabs do and the wallet bonus */
+function WalletStep() {
+  return (
+    <>
+      <View style={[styles.copy, { gap: 12 }]}>
+        <Text style={[TYPE.display40, styles.title]}>PEPPER DAO</Text>
+        <Text style={[TYPE.meta18, styles.body]}>The community runs it. You can too.</Text>
+      </View>
+      <View style={{ alignSelf: 'stretch' }}>
+        <HardShadow />
+        <View style={styles.modes}>
+          {MODES.map((mode, index) => (
+            <View key={mode.title}>
+              {index > 0 ? <DashedDivider /> : null}
+              <View style={[styles.row, styles.modeRow]}>
+                <Image source={mode.icon} style={{ width: 28, height: 28 }} contentFit="contain" />
+                <View style={{ flex: 1 }}>
+                  <Text style={TYPE.label12}>{mode.title}</Text>
+                  <Text style={[TYPE.meta18, { color: INK.muted }]}>{mode.hint}</Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+      <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>
+        {`+${REPUTATION_POINTS.WALLET_CONNECTED} REP WHEN YOU LINK A WALLET`}
+      </Text>
+    </>
+  );
+}
+
+/** Darkens the top behind the HUD and cools the burst into the void under the copy */
+function Fades({ width, height }: { width: number; height: number }) {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height}>
         <Defs>
-          <LinearGradient id="onboarding-fade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.3" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
-            <Stop offset="0.58" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
+          <LinearGradient id="onboarding-bottom" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.5" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
+            <Stop offset="0.65" stopColor={THERMAL_COLORS.void} stopOpacity={0.96} />
             <Stop offset="1" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
           </LinearGradient>
+          <LinearGradient id="onboarding-top" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={THERMAL_COLORS.void} stopOpacity={0.7} />
+            <Stop offset="0.6" stopColor={THERMAL_COLORS.void} stopOpacity={0.35} />
+            <Stop offset="1" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
+          </LinearGradient>
         </Defs>
-        <Rect x="0" y="0" width={width} height={height} fill="url(#onboarding-fade)" />
+        <Rect x="0" y="0" width={width} height={height} fill="url(#onboarding-bottom)" />
+        <Rect x="0" y="0" width={width} height={TOP_FADE} fill="url(#onboarding-top)" />
       </Svg>
     </View>
   );
 }
 
-function progressColors(index: number): Array<string> {
-  const lit = (index + 1) * CELLS_PER_STEP;
-  return Array.from({ length: STEPS.length * CELLS_PER_STEP }, (_, cell) =>
-    cell < lit ? THERMAL_COLORS.gold : THERMAL_COLORS.ghost,
-  );
-}
+type StepKind = 'chips' | 'levels' | 'wallet';
 
 interface Step {
-  number: string;
-  /** Heat character for this step: pulse → vote ✓ → power ⚡ */
+  kind: StepKind;
+  /** Heat character behind this step */
   shape: HeatShape;
+  centerY: number;
+  mascot: Rank;
+  badge: string;
+  chips: Array<{ label: string; color: string }>;
   title: string;
-  eyebrow: string;
   body: string;
 }
 
 const STEPS: Array<Step> = [
   {
-    number: '01',
+    kind: 'chips',
     shape: 'pulse',
-    title: 'FEEL THE\nPULSE',
-    eyebrow: 'TREASURY · SUPPLY · LIVE VOTES',
-    body: "Track PEPPER metrics, treasury health, and community stats. Stay updated on the DAO's heartbeat!",
+    centerY: 0.08,
+    mascot: 'OBSERVER',
+    badge: 'LIVE · DAO TREASURY',
+    chips: [
+      { label: 'TREASURY', color: THERMAL_COLORS.gold },
+      { label: 'TOKEN', color: THERMAL_COLORS.cream },
+      { label: 'VOTES', color: THERMAL_COLORS.red },
+    ],
+    title: 'FEEL THE PULSE',
+    body: 'PEPPER holders run the DAO together. Watch the treasury, the token and every vote live.',
   },
   {
-    number: '02',
+    kind: 'chips',
     shape: 'check',
-    title: 'DECIDE\nTOGETHER',
-    eyebrow: 'PROPOSALS · STAGES · VOTES',
-    body: "Vote on governance proposals and shape the DAO's future. Your voice matters in every decision.",
+    centerY: 0.235,
+    mascot: 'MEMBER',
+    badge: 'YOUR VOTE COUNTS',
+    chips: [
+      { label: 'YES', color: VOTE_COLORS.YES },
+      { label: 'NO', color: VOTE_COLORS.NO },
+      { label: 'ABSTAIN', color: VOTE_COLORS.ABSTAIN },
+    ],
+    title: 'DECIDE TOGETHER',
+    body: 'Vote with staked PEPPER. Every vote is recorded on Chiliz Chain and counts.',
   },
   {
-    number: '03',
+    kind: 'levels',
     shape: 'bolt',
-    title: 'CLAIM YOUR\nPOWER',
-    eyebrow: 'STAKE · REP · 6 HEAT RANKS',
-    body: 'Stake tokens, earn reputation, and climb 6 ranks. Build streaks to unlock rewards and influence!',
+    centerY: 0.235,
+    mascot: 'PARTICIPANT',
+    badge: '6 HEAT LEVELS',
+    chips: [],
+    title: 'HEAT UP',
+    body: 'Stake, vote and propose to earn REP. Climb 6 heat levels, from Bell to Reaper.',
+  },
+  {
+    kind: 'wallet',
+    shape: 'pulse',
+    // Core sits high so the copy and mode list stay on a dark ground
+    centerY: 0.02,
+    mascot: 'STEWARD',
+    badge: '',
+    chips: [],
+    title: 'PEPPER DAO',
+    body: '',
   },
 ];
 
-const CELLS_PER_STEP = 4;
-/** Vertical centre of a shaped heat character (Figma: 205 / 874) */
-const SHAPE_CENTER_Y = 0.235;
+/** Six levels: colour from the heat ramp, bars rise with the heat */
+const LADDER: Array<{ rank: Rank; color: string; height: number; letters: number }> = [
+  { rank: 'OBSERVER', color: THERMAL_COLORS.navy, height: 6, letters: 4 },
+  { rank: 'MEMBER', color: THERMAL_COLORS.violet, height: 6, letters: 4 },
+  { rank: 'PARTICIPANT', color: THERMAL_COLORS.red, height: 9, letters: 4 },
+  { rank: 'STEWARD', color: THERMAL_COLORS.orange, height: 11, letters: 4 },
+  { rank: 'INITIATOR', color: THERMAL_COLORS.gold, height: 14, letters: 5 },
+  { rank: 'GOVERNOR', color: THERMAL_COLORS.cream, height: 16, letters: 6 },
+];
+
+const MODES = [
+  { title: 'PULSE', hint: 'Treasury & token, live', icon: require('@/assets/images/pepper/total-supply.png') },
+  { title: 'DECIDE', hint: 'Vote on proposals', icon: require('@/assets/images/pepper/vault.png') },
+  { title: 'POWER', hint: 'Stake, earn REP, level up', icon: require('@/assets/images/pepper/burn.png') },
+];
+
+const MASCOT_SIZE = 190;
+const TOP_FADE = 120;
+/** Upcoming progress cells (Figma: 20% white) */
+const PROGRESS_TODO = 'rgba(255,255,255,0.2)';
+
+/** Onboarding body copy sits at 70% (Figma) */
+const INK_BODY = 'rgba(255,255,255,0.7)';
 
 const styles = StyleSheet.create({
   root: {
@@ -175,33 +327,85 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACE.margin,
     gap: SPACE.section,
   },
-  hud: {
+  top: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 16,
+    minHeight: 36,
   },
-  tag: {
-    backgroundColor: THERMAL_COLORS.void,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  progress: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  progressCell: {
+    flex: 1,
+    height: 6,
   },
   skip: {
     paddingHorizontal: 10,
     paddingVertical: 7,
-    backgroundColor: THERMAL_COLORS.chip,
-    borderWidth: 2,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
     borderColor: THERMAL_COLORS.border,
   },
   step: {
-    gap: SPACE.section,
+    alignItems: 'center',
+    gap: 16,
   },
-  inkShadow: {
+  badge: {
+    backgroundColor: THERMAL_COLORS.void,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.border,
+  },
+  ladder: {
+    width: 330,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  ladderStep: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  copy: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: 12,
+  },
+  title: {
+    textAlign: 'center',
     textShadowColor: '#000000',
-    textShadowOffset: { width: 4, height: 4 },
+    textShadowOffset: { width: 3, height: 3 },
     textShadowRadius: 0,
   },
-  actions: {
-    flexDirection: 'row',
+  body: {
+    textAlign: 'center',
+    color: INK_BODY,
+  },
+  modes: {
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.border,
+  },
+  modeRow: {
     gap: 12,
+    paddingHorizontal: SPACE.rowX,
+    paddingVertical: 12,
   },
 });
