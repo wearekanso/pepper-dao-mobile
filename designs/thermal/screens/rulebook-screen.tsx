@@ -51,7 +51,7 @@ export function RulebookScreen() {
     <ThermalScreen
       preset="rulebook"
       bottomSpace={48}
-      navBar={{ title: 'RULEBOOK', onBack: handleBack, accessory: `READ ${readSet.size} / ${CONSTITUTION.length}` }}
+      navBar={{ title: 'RULEBOOK', onBack: handleBack }}
     >
       <View style={{ gap: 6 }}>
         <Text style={TYPE.display32}>RULEBOOK</Text>

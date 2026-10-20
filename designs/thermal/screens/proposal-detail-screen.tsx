@@ -414,7 +414,8 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
         <Defs>
           <LinearGradient id="dock-fade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
-            <Stop offset="0.3" stopColor={THERMAL_COLORS.void} stopOpacity={0.95} />
+            {/* Fully opaque by the time the buttons start, so content never shows through them */}
+            <Stop offset={DOCK_BUTTONS_TOP / height} stopColor={THERMAL_COLORS.void} stopOpacity={1} />
             <Stop offset="1" stopColor={THERMAL_COLORS.void} stopOpacity={1} />
           </LinearGradient>
         </Defs>
@@ -563,6 +564,8 @@ const INK_DIM = 'rgba(255,255,255,0.5)';
 
 const SUMMARY_PREVIEW_CHARS = 220;
 const DOCK_HEIGHT = 128;
+/** Dock buttons start 36pt down; the fade above them is the only see-through part */
+const DOCK_BUTTONS_TOP = 36;
 const EXPLORER_URL = 'https://chiliscan.com';
 
 const styles = StyleSheet.create({
@@ -595,7 +598,7 @@ const styles = StyleSheet.create({
   },
   dockBody: {
     position: 'absolute',
-    top: 36,
+    top: DOCK_BUTTONS_TOP,
     left: 16,
     right: 16,
     gap: 10,
