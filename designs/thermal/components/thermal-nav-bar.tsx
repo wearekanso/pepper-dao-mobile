@@ -19,6 +19,8 @@ interface ThermalNavBarProps {
   scrollY: SharedValue<number>;
   /** Scroll offset at which the bar has fully filled in (≈ large title height) */
   collapseAt?: number;
+  /** Show the title at rest too, not only once the large title scrolls away */
+  pinnedTitle?: boolean;
   /** Space above the bar; defaults to the status bar inset */
   topInset?: number;
 }
@@ -37,6 +39,7 @@ export function ThermalNavBar({
   scrollY,
   collapseAt = 44,
   topInset,
+  pinnedTitle = false,
 }: ThermalNavBarProps) {
   const insets = useSafeAreaInsets();
   const top = topInset ?? insets.top;
@@ -45,7 +48,7 @@ export function ThermalNavBar({
     opacity: interpolate(scrollY.value, [collapseAt * 0.4, collapseAt], [0, 1], 'clamp'),
   }));
   const titleStyle = useAnimatedStyle(() => {
-    const progress = interpolate(scrollY.value, [collapseAt * 0.7, collapseAt * 1.2], [0, 1], 'clamp');
+    const progress = pinnedTitle ? 1 : interpolate(scrollY.value, [collapseAt * 0.7, collapseAt * 1.2], [0, 1], 'clamp');
     return { opacity: progress, transform: [{ translateY: (1 - progress) * 6 }] };
   });
 

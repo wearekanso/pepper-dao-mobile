@@ -223,6 +223,7 @@ export function CreateProposalScreen() {
       <ThermalNavBar
         title="NEW PROPOSAL"
         icon="close"
+        pinnedTitle
         onBack={handleCancel}
         scrollY={scrollY}
       />
