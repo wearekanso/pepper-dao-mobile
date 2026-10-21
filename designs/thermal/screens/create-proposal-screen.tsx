@@ -126,6 +126,11 @@ export function CreateProposalScreen() {
 
   async function handleSubmit() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Demo wallet can't sign: just leave like a cancel
+    if (demoEligibility) {
+      router.back();
+      return;
+    }
 
     const result = ProposalFormSchema.safeParse(form);
     if (!result.success) {
@@ -251,7 +256,7 @@ export function CreateProposalScreen() {
           {stage === 2 ? (
             <View style={[styles.between, { marginBottom: 12 }]}>
               <Text style={[TYPE.meta18, { color: INK.muted }]}>1 transaction in your wallet</Text>
-              <Text style={[TYPE.meta18, { color: INK.muted }]}>GAS IN CHZ</Text>
+              <Text style={[TYPE.meta18, { color: INK.muted }]}>{`GAS ~${PROPOSAL_GAS_CHZ} CHZ`}</Text>
             </View>
           ) : null}
           <View style={styles.actions}>
@@ -691,6 +696,8 @@ const NEXT_STEPS = [
 const FOOTER_HEIGHT = 74;
 const FOOTER_NOTE_HEIGHT = 32;
 /** Fade strip at the top of the footer (= its top padding) */
+/** Rough CHZ a proposal submission's gas needs (Figma: "GAS ~0.5 CHZ") */
+const PROPOSAL_GAS_CHZ = 0.5;
 const FOOTER_FADE = 24;
 /** Space between the footer buttons and the top of the keyboard */
 const FOOTER_KEYBOARD_GAP = 12;
