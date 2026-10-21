@@ -144,12 +144,19 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
 /**
  * Figma "Heat Burst · pulse · 10pt": eight blurred colour bands around the
  * mascot, with the Power heat camera's FLIP wave rolling out of the hottest
- * band in round rings, taking its colours from the band under each card.
+ * band in tall ellipses that follow the burst's shape, taking its colours
+ * from the band under each card.
  */
 function RankUpBackdrop({ width, height }: { width: number; height: number }) {
   const scale = width / FIGMA_WIDTH;
   const bands = useMemo(() => RANKUP_BANDS.map(buildRows), []);
-  const hotspot = useMemo(() => getCenter(RANKUP_BANDS[RANKUP_BANDS.length - 1]), []);
+  const core = useMemo(() => getBounds(RANKUP_BANDS[RANKUP_BANDS.length - 1]), []);
+
+  // Squash vertical distance by the core's aspect ratio, so the rings come out as tall ellipses
+  const distanceAt = useCallback(
+    (x: number, y: number) => Math.hypot(x - core.x * scale, (y - core.y * scale) * core.aspect),
+    [core, scale],
+  );
 
   const sampleColor = useCallback(
     (x: number, y: number) => {
@@ -176,9 +183,10 @@ function RankUpBackdrop({ width, height }: { width: number; height: number }) {
       <PixelCore
         width={width}
         height={height}
-        centerX={hotspot.x * scale}
-        centerY={hotspot.y * scale}
+        centerX={core.x * scale}
+        centerY={core.y * scale}
         sampleColor={sampleColor}
+        distanceAt={distanceAt}
         variant="flip"
       />
     </View>
@@ -212,8 +220,8 @@ function buildRows(runs: Array<number>): Map<number, Array<[number, number]>> {
   return rows;
 }
 
-/** Middle of a band's bounding box, in Figma points */
-function getCenter(runs: Array<number>): { x: number; y: number } {
+/** Middle of a band's bounding box in Figma points, and its width ÷ height */
+function getBounds(runs: Array<number>): { x: number; y: number; aspect: number } {
   let x0 = Infinity;
   let x1 = -Infinity;
   let y0 = Infinity;
@@ -224,7 +232,7 @@ function getCenter(runs: Array<number>): { x: number; y: number } {
     y0 = Math.min(y0, runs[i + 1]);
     y1 = Math.max(y1, runs[i + 1] + CELL);
   }
-  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, aspect: (x1 - x0) / (y1 - y0) };
 }
 
 /** "250 REP + 4-WEEK STREAK" — what the next rank asks for */
