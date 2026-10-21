@@ -220,12 +220,13 @@ export function getActionSummary(action: ProposalAction): ActionSummary {
   if (action.to.toLowerCase() === PEPPER_TOKEN_ADDRESS.toLowerCase() && data.startsWith(ERC20_TRANSFER) && data.length >= 138) {
     const recipient = `0x${data.slice(34, 74)}`;
     const amount = BigInt(`0x${data.slice(74, 138)}`);
-    return { title: `Transfer ${formatCompact(tokenToNumber(amount, 18))} PEPPER`, detail: `to ${shortenAddress(recipient)}` };
+    // Proposal actions run from the DAO, so the tokens leave the treasury (Figma: "from Treasury → 0xab12…cd34")
+    return { title: `Transfer ${formatCompact(tokenToNumber(amount, 18))} PEPPER`, detail: `from Treasury → ${shortenAddress(recipient)}` };
   }
 
   const value = BigInt(action.value || '0');
   if (value > BigInt(0)) {
-    return { title: `Send ${formatCompact(tokenToNumber(value, 18))} CHZ`, detail: `to ${shortenAddress(action.to)}` };
+    return { title: `Send ${formatCompact(tokenToNumber(value, 18))} CHZ`, detail: `from Treasury → ${shortenAddress(action.to)}` };
   }
   return { title: 'Contract call', detail: `on ${shortenAddress(action.to)}` };
 }

@@ -1,3 +1,4 @@
+import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
 import type { GovernanceProposal } from '@/types/governance';
 
 /**
@@ -35,7 +36,14 @@ export function createDemoProposal(): GovernanceProposal {
     approvals: 0,
     minApprovals: 0,
     approvalReached: false,
-    actions: [],
+    // Same transfer as the Figma Detail frame: 175T PEPPER to a rewards address
+    actions: [
+      {
+        to: PEPPER_TOKEN_ADDRESS,
+        value: '0',
+        data: `0xa9059cbb${DEMO_RECIPIENT.slice(2).padStart(64, '0')}${(BigInt(175_000_000_000_000) * WEI).toString(16).padStart(64, '0')}`,
+      },
+    ],
     tally: {
       yes: (BigInt(4_200_000) * WEI).toString(),
       no: (BigInt(1_300_000) * WEI).toString(),
@@ -73,4 +81,5 @@ export async function castDemoVote(
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEMO_RECIPIENT = '0xab1200000000000000000000000000000000cd34';
 const WEI = BigInt(10) ** BigInt(18);
