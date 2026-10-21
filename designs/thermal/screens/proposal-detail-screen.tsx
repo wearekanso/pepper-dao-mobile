@@ -395,10 +395,9 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
   const isOpen = proposal.status === 'ACTIVE';
   const height = DOCK_HEIGHT + insets.bottom;
 
-  const footer = freshTx
-    ? isDemoProposalId(proposal.id)
-      ? `Test vote (not on-chain) · ${selected}`
-      : `You voted ${selected} · recorded on Chiliz`
+  // Figma: "You voted YES · tap to change  TX >" — a vote can be changed while voting is open
+  const footer = freshTx && isDemoProposalId(proposal.id)
+    ? `You voted ${selected} · test, not on-chain`
     : proposal.status === 'PENDING'
       ? `Voting opens in ${formatCountdown(proposal.startDate).toLowerCase()}`
       : !isOpen
