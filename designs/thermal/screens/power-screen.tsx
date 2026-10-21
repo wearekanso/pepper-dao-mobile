@@ -106,6 +106,8 @@ function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: 
   const isFlip = variant === 'flip';
   // Stage x matches the screen; stage y is offset by where the stage sits
   const sampleColor = useCallback((x: number, y: number) => sampleHeatColor('power', width, x, y + stageY), [width, stageY]);
+  // The mascot sits on the backdrop's white-hot core, which lives in screen space
+  const artCenterY = hotspot.y - stageY;
 
   return (
     <View
@@ -138,10 +140,15 @@ function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: 
         <CornerBrackets size={16} focusKey={focusKey} />
       </View>
 
-      <FloatingArt profile={profile} centerX={centerX} />
-      <Crosshair centerX={centerX} />
+      {/* Mounted once the stage is measured, so the mascot fades in already on the core */}
+      {stageY > 0 ? (
+        <>
+          <FloatingArt profile={profile} centerX={centerX} centerY={artCenterY} />
+          <Crosshair centerX={centerX} centerY={artCenterY} />
+        </>
+      ) : null}
       <ThermalScale levelIndex={heat.current.level - 1} />
-      <YouCallout shu={heat.shu} levelIndex={heat.current.level - 1} />
+      <YouCallout shu={heat.shu} levelIndex={heat.current.level - 1} artCenterY={stageY > 0 ? artCenterY : ART_CENTER_Y} />
 
       <View style={styles.readout}>
         <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT · SCOVILLE READING</Text>
@@ -164,7 +171,7 @@ function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: 
   );
 }
 
-function FloatingArt({ profile, centerX }: { profile: Profile; centerX: number }) {
+function FloatingArt({ profile, centerX, centerY }: { profile: Profile; centerX: number; centerY: number }) {
   const enter = useSharedValue(0);
 
   useEffect(() => {
@@ -174,13 +181,13 @@ function FloatingArt({ profile, centerX }: { profile: Profile; centerX: number }
   const animatedStyle = useAnimatedStyle(() => ({ opacity: enter.value }));
 
   return (
-    <Animated.View style={[styles.art, { left: centerX - ART_SIZE / 2 }, animatedStyle]}>
+    <Animated.View style={[styles.art, { left: centerX - ART_SIZE / 2, top: centerY - ART_SIZE / 2 }, animatedStyle]}>
       <Image source={RANK_IMAGES[profile.rank] as number} style={{ width: ART_SIZE, height: ART_SIZE, opacity: 0.95 }} contentFit="contain" />
     </Animated.View>
   );
 }
 
-function Crosshair({ centerX }: { centerX: number }) {
+function Crosshair({ centerX, centerY }: { centerX: number; centerY: number }) {
   const spin = useSharedValue(0);
 
   // Slow opacity pulse only — no rotation or scaling
@@ -191,7 +198,7 @@ function Crosshair({ centerX }: { centerX: number }) {
   const animatedStyle = useAnimatedStyle(() => ({ opacity: 0.5 + spin.value * 0.4 }));
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.crosshair, { left: centerX - 14 }, animatedStyle]}>
+    <Animated.View pointerEvents="none" style={[styles.crosshair, { left: centerX - 14, top: centerY - 14 }, animatedStyle]}>
       <PixelArt name="crosshair" />
     </Animated.View>
   );
@@ -203,10 +210,10 @@ function Crosshair({ centerX }: { centerX: number }) {
  * back toward the camera art: it steps down to the tag when the tag is below
  * the art (as in Figma) and up to it when the tag is above.
  */
-function YouCallout({ shu, levelIndex }: { shu: number; levelIndex: number }) {
+function YouCallout({ shu, levelIndex, artCenterY }: { shu: number; levelIndex: number; artCenterY: number }) {
   const level = LEVEL_LIST[levelIndex];
   const top = levelLabelTop(levelIndex) - CALLOUT_OFFSET;
-  const isBelowArt = top + CALLOUT_HEIGHT / 2 > ART_CENTER_Y;
+  const isBelowArt = top + CALLOUT_HEIGHT / 2 > artCenterY;
 
   return (
     <View pointerEvents="none" style={[styles.callout, { top, right: CALLOUT_RIGHT }]}>
@@ -645,11 +652,9 @@ const styles = StyleSheet.create({
   },
   art: {
     position: 'absolute',
-    top: ART_CENTER_Y - ART_SIZE / 2,
   },
   crosshair: {
     position: 'absolute',
-    top: ART_CENTER_Y - 14,
   },
   callout: {
     position: 'absolute',
