@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -27,7 +28,7 @@ import { PixelButton } from '../components/pixel-button';
 import { PixelCore, type PixelCoreVariant } from '../components/pixel-core';
 import { useRankUp } from '../components/rank-up-overlay';
 import { StakeSheet } from '../components/stake-sheet';
-import { getHeatHotspot, sampleHeatColor } from '../components/thermal-background';
+import { BACKDROP_PARALLAX, getHeatHotspot, sampleHeatColor } from '../components/thermal-background';
 import { TabHeader } from '../components/tab-header';
 import { ThermalScreen } from '../components/thermal-screen';
 import { WalletChip } from '../components/wallet-chip';
@@ -46,9 +47,10 @@ export function PowerScreen() {
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const [isHowToOpen, setIsHowToOpen] = useState(false);
   const { isConnected, connect } = useWallet();
+  const scrollY = useSharedValue(0);
 
   return (
-    <ThermalScreen preset="power">
+    <ThermalScreen preset="power" scrollY={scrollY}>
       <TabHeader title="POWER" subtitle="YOUR HEAT, STREAK & LEVEL" />
 
       {isLoading && !profile ? (
@@ -68,7 +70,7 @@ export function PowerScreen() {
 
       {profile ? (
         <>
-          <HeatCamera profile={profile} variant={CORE_VARIANT} isGuest={!isConnected} />
+          <HeatCamera profile={profile} variant={CORE_VARIANT} isGuest={!isConnected} scrollY={scrollY} />
           {isConnected ? (
             <>
               <StreakPanel profile={profile} />
@@ -91,7 +93,14 @@ export function PowerScreen() {
   );
 }
 
-function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: PixelCoreVariant; isGuest: boolean }) {
+interface HeatCameraProps {
+  profile: Profile;
+  variant: PixelCoreVariant;
+  isGuest: boolean;
+  scrollY: SharedValue<number>;
+}
+
+function HeatCamera({ profile, variant, isGuest, scrollY }: HeatCameraProps) {
   const { width } = useWindowDimensions();
   const focusKey = useFocusKey();
   const { preview } = useRankUp();
@@ -108,6 +117,10 @@ function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: 
   const sampleColor = useCallback((x: number, y: number) => sampleHeatColor('power', width, x, y + stageY), [width, stageY]);
   // The mascot sits on the backdrop's white-hot core, which lives in screen space
   const artCenterY = hotspot.y - stageY;
+  // The wave belongs to the backdrop: undo part of the scroll so it drifts with the glow's parallax
+  const waveStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: scrollY.value * (1 - BACKDROP_PARALLAX) }],
+  }));
 
   return (
     <View
@@ -115,7 +128,7 @@ function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: 
       style={{ height: STAGE_HEIGHT }}
       onLayout={() => stageRef.current?.measureInWindow((_x, y) => setStageY(y))}
     >
-      <View style={[StyleSheet.absoluteFill, { left: -16, right: -16 }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { left: -16, right: -16 }, waveStyle]}>
         <PixelCore
           width={width}
           height={STAGE_HEIGHT}
@@ -126,7 +139,7 @@ function HeatCamera({ profile, variant, isGuest }: { profile: Profile; variant: 
           intensity={(heat.current.level - 1) / (MAX_HEAT_LEVEL - 1)}
           variant={variant}
         />
-      </View>
+      </Animated.View>
 
       {/* Same hero pattern as Pulse: status row above, viewfinder below */}
       <Animated.View style={styles.stageHud}>

@@ -29,6 +29,9 @@ interface ThermalBackgroundProps {
  * Animated thermal-camera backdrop: blurred heat blobs that breathe,
  * a 10pt "sensor grid" that pixelates them, and an optional scan sweep.
  */
+/** How far the backdrop drifts per point of scroll; layers drawn on the glow must match it */
+export const BACKDROP_PARALLAX = 0.35;
+
 export function ThermalBackground({ preset, scrollY, scanKey }: ThermalBackgroundProps) {
   const { width, height } = useWindowDimensions();
   const scale = width / FIGMA_WIDTH;
@@ -36,7 +39,7 @@ export function ThermalBackground({ preset, scrollY, scanKey }: ThermalBackgroun
 
   const parallaxStyle = useAnimatedStyle(() => {
     if (!scrollY) return {};
-    return { transform: [{ translateY: -scrollY.value * 0.35 }] };
+    return { transform: [{ translateY: -scrollY.value * BACKDROP_PARALLAX }] };
   });
 
   return (
