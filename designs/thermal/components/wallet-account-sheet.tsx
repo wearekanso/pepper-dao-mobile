@@ -1,3 +1,4 @@
+import { useWalletInfo } from '@reown/appkit-react-native';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
@@ -9,6 +10,7 @@ import { useStaking } from '@/hooks/use-staking';
 import { copyToClipboard } from '@/lib/clipboard';
 import { fetchNativeBalance } from '@/services/chiliz-api';
 
+import { DEMO_WALLET } from '../lib/demo-power';
 import { formatCompact, shortenAddress, tokenToNumber } from '../lib/format';
 import { FEEDBACK_HOLD_MS } from '../motion';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
@@ -20,20 +22,27 @@ import { ThermalSheet } from './thermal-sheet';
 interface WalletAccountSheetProps {
   visible: boolean;
   onClose: () => void;
+  /** Dev-only demo screens: show the demo wallet; DISCONNECT just closes */
+  demo?: boolean;
 }
 
 /**
  * YOUR WALLET — opened from the wallet chip once connected: address with
  * copy, PEPPER / vePEPPER / CHZ balances, explorer link and disconnect.
  */
-export function WalletAccountSheet({ visible, onClose }: WalletAccountSheetProps) {
-  const { address, isWrongNetwork, disconnect } = useWallet();
-  const { formattedWalletBalance, formattedStakedBalance, isLoading } = useStaking();
+export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAccountSheetProps) {
+  const wallet = useWallet();
+  const address = demo ? DEMO_WALLET.address : wallet.address;
+  const isWrongNetwork = demo ? false : wallet.isWrongNetwork;
+  const { walletInfo } = useWalletInfo();
+  const walletName = demo ? DEMO_WALLET.walletName : walletInfo?.name;
+  const staking = useStaking();
+  const isLoading = demo ? false : staking.isLoading;
   const [copied, setCopied] = useState(false);
   const { data: native } = useQuery({
     queryKey: ['thermal', 'nativeBalance', address],
     queryFn: () => fetchNativeBalance(address!),
-    enabled: visible && Boolean(address),
+    enabled: visible && !demo && Boolean(address),
     staleTime: 30_000,
   });
 
@@ -59,13 +68,16 @@ export function WalletAccountSheet({ visible, onClose }: WalletAccountSheetProps
 
   async function handleDisconnect() {
     onClose();
-    await disconnect();
+    if (!demo) await wallet.disconnect();
   }
 
+  const pepper = demo ? DEMO_WALLET.pepper : parseFloat(staking.formattedWalletBalance) || 0;
+  const vePepper = demo ? DEMO_WALLET.vePepper : parseFloat(staking.formattedStakedBalance) || 0;
+  const chz = demo ? DEMO_WALLET.chz : native ? tokenToNumber(native.balance, 18) : null;
   const balances = [
-    { label: 'PEPPER', value: isLoading ? '…' : formatCompact(parseFloat(formattedWalletBalance) || 0), hint: 'in wallet' },
-    { label: 'vePEPPER', value: isLoading ? '…' : formatCompact(parseFloat(formattedStakedBalance) || 0), hint: 'voting power' },
-    { label: 'CHZ', value: native ? formatCompact(tokenToNumber(native.balance, 18)) : '…', hint: 'for gas' },
+    { label: 'PEPPER', value: isLoading ? '…' : formatBalance(pepper), hint: 'in wallet' },
+    { label: 'vePEPPER', value: isLoading ? '…' : formatBalance(vePepper), hint: 'voting power' },
+    { label: 'CHZ', value: chz === null ? '…' : formatBalance(chz), hint: 'for gas' },
   ];
 
   return (
@@ -81,7 +93,7 @@ export function WalletAccountSheet({ visible, onClose }: WalletAccountSheetProps
           <View style={[styles.between, { gap: 6 }]}>
             <View style={[styles.dot, { backgroundColor: isWrongNetwork ? STATUS_COLORS.negative.stroke : THERMAL_COLORS.gold }]} />
             <Text style={[TYPE.meta18, { color: isWrongNetwork ? STATUS_COLORS.negative.text : INK.muted }]}>
-              {isWrongNetwork ? 'WRONG NETWORK' : 'CHILIZ CHAIN'}
+              {isWrongNetwork ? 'WRONG NETWORK' : walletName ? `CHILIZ CHAIN · ${walletName.toUpperCase()}` : 'CHILIZ CHAIN'}
             </Text>
           </View>
           <Touchable onPress={() => void handleCopy()} hitSlop={8}>
@@ -101,7 +113,7 @@ export function WalletAccountSheet({ visible, onClose }: WalletAccountSheetProps
               <Text style={TYPE.display24} numberOfLines={1} adjustsFontSizeToFit>
                 {item.value}
               </Text>
-              <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1}>
+              <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {item.hint}
               </Text>
             </View>
@@ -118,6 +130,12 @@ export function WalletAccountSheet({ visible, onClose }: WalletAccountSheetProps
       </View>
     </ThermalSheet>
   );
+}
+
+/** Figma: full numbers below a million ("12,000", "230.5"), compact above ("12.4M") */
+function formatBalance(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return formatCompact(value);
+  return value.toLocaleString('en-US', { maximumFractionDigits: 1 });
 }
 
 const EXPLORER_URL = 'https://chiliscan.com';

@@ -60,7 +60,7 @@ export function PowerScreen() {
 
   return (
     <ThermalScreen preset="power" scrollY={scrollY}>
-      <TabHeader title="POWER" subtitle="YOUR HEAT, STREAK & LEVEL" />
+      <TabHeader title="POWER" subtitle="YOUR HEAT, STREAK & LEVEL" accessory={<WalletChip demo={isDemo} />} />
 
       {isLoading && !profile ? (
         <View style={styles.center}>

@@ -12,6 +12,15 @@ export function isDemoPower(param: string | Array<string> | undefined): boolean 
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** What the demo wallet chip and YOUR WALLET sheet show */
+export const DEMO_WALLET = {
+  address: '0xcA93b4E1F2c3d4e5F6a7B8c9D0e1F2a3B4c5F310',
+  walletName: 'Socios.com',
+  pepper: 12_400_000,
+  vePepper: 12_000,
+  chz: 230.5,
+};
 const DEMO_PROFILE_ID = 'demo-heat';
 
 export function createDemoProfile(): Profile {

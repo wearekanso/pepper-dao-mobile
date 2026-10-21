@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 
 import { useWallet } from '@/contexts/wallet-context';
 
+import { DEMO_WALLET } from '../lib/demo-power';
 import { shortenAddress } from '../lib/format';
 import { THERMAL_COLORS, TYPE } from '../theme';
 import { BlinkDot, Touchable } from './atoms';
@@ -11,10 +12,14 @@ import { WalletAccountSheet } from './wallet-account-sheet';
 
 /**
  * HUD wallet chip — shows the connected address (tap for YOUR WALLET) or
- * a blinking "CONNECT" prompt that opens the wallet picker.
+ * a blinking "CONNECT" prompt that opens the wallet picker. `demo` (dev-only
+ * demo screens) shows the demo wallet instead of the real connection.
  */
-export function WalletChip() {
-  const { address, isConnected, connect } = useWallet();
+export function WalletChip({ demo = false }: { demo?: boolean }) {
+  const wallet = useWallet();
+  const { connect } = wallet;
+  const address = demo ? DEMO_WALLET.address : wallet.address;
+  const isConnected = demo || wallet.isConnected;
   const [isAccountOpen, setIsAccountOpen] = useState(false);
 
   function handlePress() {
@@ -36,7 +41,7 @@ export function WalletChip() {
         )}
         <Text style={TYPE.meta18}>{isConnected && address ? shortenAddress(address) : 'CONNECT'}</Text>
       </Touchable>
-      <WalletAccountSheet visible={isAccountOpen} onClose={() => setIsAccountOpen(false)} />
+      <WalletAccountSheet visible={isAccountOpen} demo={demo} onClose={() => setIsAccountOpen(false)} />
     </>
   );
 }
