@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   interpolate,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -20,7 +21,7 @@ import {
   type BackdropName,
   type BandImage,
 } from '../lib/onboarding-backdrops';
-import { DURATION, fadeIn, fadeOut } from '../motion';
+import { DURATION, fadeIn, fadeOut, TIMING } from '../motion';
 import { PixelCore } from './pixel-core';
 import { SensorGrid } from './thermal-background';
 
@@ -37,8 +38,10 @@ interface ShapeBackdropProps {
  * out of the shape's hottest band twice ("ba-dum"), then rest. The pulse keeps
  * the shape's outline (a distance field from the band) and fades out a short
  * way from it. Colours come from the shape.
- * Switching shape cross-fades the bands; the old pulse fades out first and the
- * new one starts from the beginning, so old and new pixels never mix.
+ * Switching shape morphs the bands: each band of the old shape stretches into
+ * the matching band of the new one while its image blends over. The old pulse
+ * fades out first and the new one starts from the beginning, so old and new
+ * pixels never mix.
  */
 export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
   const scale = width / FIGMA_WIDTH;
@@ -95,12 +98,10 @@ export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
         <Rect x="0" y="0" width={width} height={height} fill="url(#backdrop-floor)" />
       </Svg>
 
-      {/* Only the light band images cross-fade; the flip wave stays mounted and recolours */}
-      <Animated.View key={`bands-${shape}`} entering={fadeIn()} exiting={fadeOut()} style={StyleSheet.absoluteFill}>
-        {BACKDROP_IMAGES[shape].map((image, index) => (
-          <BreathingBand key={index} image={image} index={index} scale={scale} />
-        ))}
-      </Animated.View>
+      {/* Bands are keyed by position, not shape, so each one morphs into its counterpart */}
+      {BACKDROP_IMAGES[shape].map((image, index) => (
+        <BreathingBand key={index} image={image} index={index} scale={scale} />
+      ))}
 
       {isWaveSwitching ? null : (
         <Animated.View key={`wave-${waveShape}`} entering={fadeIn()} exiting={fadeOut()} style={StyleSheet.absoluteFill}>
@@ -128,9 +129,15 @@ interface BreathingBandProps {
   scale: number;
 }
 
-/** One colour band; breathes with the same timing as the Power backdrop's heat blobs */
+/**
+ * One colour band; breathes with the same timing as the Power backdrop's heat
+ * blobs, and morphs to a new image when the shape changes.
+ */
 function BreathingBand({ image, index, scale }: BreathingBandProps) {
   const breath = useSharedValue(0);
+  // Each shape change starts a fresh morph from the band's last target
+  const [morph, setMorph] = useState({ from: image, to: image, id: 0 });
+  if (morph.to !== image) setMorph({ from: morph.to, to: image, id: morph.id + 1 });
 
   useEffect(() => {
     breath.value = withDelay(
@@ -143,21 +150,50 @@ function BreathingBand({ image, index, scale }: BreathingBandProps) {
     );
   }, [breath, index]);
 
-  const pulse = BAND_PULSE[index];
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(breath.value, [0, 1], [0.82, 1]),
-    transform: [{ scale: interpolate(breath.value, [0, 1], [1, pulse]) }],
-  }));
+  return <MorphBand key={morph.id} from={morph.from} to={morph.to} breath={breath} pulse={BAND_PULSE[index]} scale={scale} />;
+}
+
+interface MorphBandProps {
+  from: BandImage;
+  to: BandImage;
+  breath: SharedValue<number>;
+  pulse: number;
+  scale: number;
+}
+
+/** Stretches the band's box from `from` to `to` while the new image blends over the old */
+function MorphBand({ from, to, breath, pulse, scale }: MorphBandProps) {
+  const isMorphing = from !== to;
+  const progress = useSharedValue(isMorphing ? 0 : 1);
+
+  useEffect(() => {
+    if (isMorphing) progress.value = withTiming(1, TIMING.emphasis);
+  }, [isMorphing, progress]);
+
+  const boxStyle = useAnimatedStyle(() => {
+    const p = progress.value;
+    return {
+      left: (from.x + (to.x - from.x) * p) * scale,
+      top: (from.y + (to.y - from.y) * p) * scale,
+      width: (from.w + (to.w - from.w) * p) * scale,
+      height: (from.h + (to.h - from.h) * p) * scale,
+      opacity: interpolate(breath.value, [0, 1], [0.82, 1]),
+      transform: [{ scale: interpolate(breath.value, [0, 1], [1, pulse]) }],
+    };
+  });
+  const fromStyle = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+  const toStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
 
   return (
-    <Animated.View
-      style={[
-        styles.band,
-        { left: image.x * scale, top: image.y * scale, width: image.w * scale, height: image.h * scale },
-        animatedStyle,
-      ]}
-    >
-      <Image source={image.source} style={StyleSheet.absoluteFill} contentFit="fill" />
+    <Animated.View style={[styles.band, boxStyle]}>
+      {isMorphing ? (
+        <Animated.View style={[StyleSheet.absoluteFill, fromStyle]}>
+          <Image source={from.source} style={StyleSheet.absoluteFill} contentFit="fill" />
+        </Animated.View>
+      ) : null}
+      <Animated.View style={[StyleSheet.absoluteFill, toStyle]}>
+        <Image source={to.source} style={StyleSheet.absoluteFill} contentFit="fill" />
+      </Animated.View>
     </Animated.View>
   );
 }
