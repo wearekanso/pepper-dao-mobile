@@ -19,7 +19,14 @@ export function formatCompact(value: number): string {
 
   const scaled = value / unit.value;
   const digits = Math.abs(scaled) < 10 ? 2 : Math.abs(scaled) < 1000 ? 1 : 0;
-  return `${scaled.toFixed(digits)}${unit.suffix}`;
+  // Drop trailing zeros: "1T", "2.5M" (Figma), not "1.00T", "2.50M"
+  return `${Number(scaled.toFixed(digits))}${unit.suffix}`;
+}
+
+/** Full number below a million ("12,000", "230.5"), compact above ("12.4M") — Figma's balance style */
+export function formatAmount(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return formatCompact(value);
+  return value.toLocaleString('en-US', { maximumFractionDigits: 1 });
 }
 
 /** Converts a raw token amount to a JS number (precision loss is fine for display) */

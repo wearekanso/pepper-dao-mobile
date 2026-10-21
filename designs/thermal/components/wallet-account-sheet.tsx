@@ -11,7 +11,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { fetchNativeBalance } from '@/services/chiliz-api';
 
 import { DEMO_WALLET } from '../lib/demo-power';
-import { formatCompact, shortenAddress, tokenToNumber } from '../lib/format';
+import { formatAmount, shortenAddress, tokenToNumber } from '../lib/format';
 import { FEEDBACK_HOLD_MS } from '../motion';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 import { Touchable } from './atoms';
@@ -75,9 +75,9 @@ export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAcc
   const vePepper = demo ? DEMO_WALLET.vePepper : parseFloat(staking.formattedStakedBalance) || 0;
   const chz = demo ? DEMO_WALLET.chz : native ? tokenToNumber(native.balance, 18) : null;
   const balances = [
-    { label: 'PEPPER', value: isLoading ? '…' : formatBalance(pepper), hint: 'in wallet' },
-    { label: 'vePEPPER', value: isLoading ? '…' : formatBalance(vePepper), hint: 'voting power' },
-    { label: 'CHZ', value: chz === null ? '…' : formatBalance(chz), hint: 'for gas' },
+    { label: 'PEPPER', value: isLoading ? '…' : formatAmount(pepper), hint: 'in wallet' },
+    { label: 'vePEPPER', value: isLoading ? '…' : formatAmount(vePepper), hint: 'voting power' },
+    { label: 'CHZ', value: chz === null ? '…' : formatAmount(chz), hint: 'for gas' },
   ];
 
   return (
@@ -130,12 +130,6 @@ export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAcc
       </View>
     </ThermalSheet>
   );
-}
-
-/** Figma: full numbers below a million ("12,000", "230.5"), compact above ("12.4M") */
-function formatBalance(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return formatCompact(value);
-  return value.toLocaleString('en-US', { maximumFractionDigits: 1 });
 }
 
 const EXPLORER_URL = 'https://chiliscan.com';

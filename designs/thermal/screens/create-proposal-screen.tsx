@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -38,7 +38,8 @@ import { PixelButton } from '../components/pixel-button';
 import { ThermalBackground } from '../components/thermal-background';
 import { NAV_BAR_HEIGHT, ThermalNavBar } from '../components/thermal-nav-bar';
 import { StakeSheet } from '../components/stake-sheet';
-import { formatCompact, tokenToNumber } from '../lib/format';
+import { getDemoEligibility } from '../lib/demo-power';
+import { formatAmount, tokenToNumber } from '../lib/format';
 import { stepIn, stepOut } from '../motion';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
@@ -52,9 +53,14 @@ type Stage = 0 | 1 | 2;
 export function CreateProposalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isConnected, connect } = useWallet();
+  const wallet = useWallet();
+  const { connect } = wallet;
   const { submit, isSubmitting, status, error: submitError } = useCreateProposal();
-  const { data: eligibility } = useProposerEligibility();
+  // Dev-only: ?demo=noteligible / ?demo=eligible shows that state without a wallet
+  const demoEligibility = getDemoEligibility(useLocalSearchParams<{ demo?: string }>().demo);
+  const eligibilityQuery = useProposerEligibility();
+  const eligibility = demoEligibility ?? eligibilityQuery.data;
+  const isConnected = demoEligibility !== null || wallet.isConnected;
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const isBlocked = isConnected && eligibility !== undefined && !eligibility.isEligible;
 
@@ -361,7 +367,7 @@ function NotEligible({ userPower, minRequired, onStake, onRulebook }: NotEligibl
 }
 
 function formatPower(value: bigint): string {
-  return formatCompact(tokenToNumber(value, 18));
+  return formatAmount(tokenToNumber(value, 18));
 }
 
 interface StageProps {
