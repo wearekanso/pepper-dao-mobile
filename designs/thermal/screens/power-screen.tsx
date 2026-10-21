@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
@@ -33,6 +34,7 @@ import { TabHeader } from '../components/tab-header';
 import { ThermalScreen } from '../components/thermal-screen';
 import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
+import { createDemoActivities, createDemoProfile, isDemoPower } from '../lib/demo-power';
 import { useFocusKey } from '../hooks/use-focus-key';
 import { formatDayMonth, formatInteger } from '../lib/format';
 import { formatShu, getHeatLevel, getHeatProgress, getRankLabel, HEAT_LEVELS, MAX_HEAT_LEVEL } from '../lib/heat-levels';
@@ -43,10 +45,17 @@ import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme'
  * thermal scale shows where you sit, and the heat log lists what earned it.
  */
 export function PowerScreen() {
-  const { profile, isLoading } = useUser();
+  const user = useUser();
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const [isHowToOpen, setIsHowToOpen] = useState(false);
-  const { isConnected, connect } = useWallet();
+  const wallet = useWallet();
+  const { connect } = wallet;
+  // Dev-only: pepperdao://power?demo=1 shows the connected screen with a fake profile
+  const isDemo = isDemoPower(useLocalSearchParams<{ demo?: string }>().demo);
+  const demoProfile = useMemo(() => (isDemo ? createDemoProfile() : null), [isDemo]);
+  const profile = demoProfile ?? user.profile;
+  const isLoading = isDemo ? false : user.isLoading;
+  const isConnected = isDemo || wallet.isConnected;
   const scrollY = useSharedValue(0);
 
   return (
@@ -79,7 +88,7 @@ export function PowerScreen() {
                 <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
                 <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
               </Animated.View>
-              <HeatLog profile={profile} />
+              <HeatLog profile={profile} isDemo={isDemo} />
             </>
           ) : (
             <GuestPanel onConnect={() => void connect()} />
@@ -484,8 +493,11 @@ function WeeklyHeat({ weeks }: { weeks: number }) {
   );
 }
 
-function HeatLog({ profile }: { profile: Profile }) {
-  const { records: activities, isLoading } = useActivities({ profileId: profile.id, limit: 12 });
+function HeatLog({ profile, isDemo }: { profile: Profile; isDemo: boolean }) {
+  const feed = useActivities({ profileId: isDemo ? undefined : profile.id, limit: 12 });
+  const demoActivities = useMemo(() => (isDemo ? createDemoActivities() : null), [isDemo]);
+  const activities = demoActivities ?? feed.records;
+  const isLoading = isDemo ? false : feed.isLoading;
 
   return (
     <Panel index={4} padding={0} gap={0}>
@@ -546,7 +558,8 @@ function getLogTitle(activity: Activity): string {
     case 'VOTE':
     case 'FIRST_VOTE': {
       const label = activity.event_type === 'FIRST_VOTE' ? 'FIRST VOTE' : 'VOTED';
-      return activity.proposal_id !== null ? `${label} · #${activity.proposal_id}` : label;
+      // Only community proposals are voted on
+      return activity.proposal_id !== null ? `${label} · COMMUNITY #${activity.proposal_id}` : label;
     }
     case 'WALLET_CONNECTED':
       return 'WALLET LINKED';

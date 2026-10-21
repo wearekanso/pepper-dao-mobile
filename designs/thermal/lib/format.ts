@@ -93,8 +93,8 @@ export function formatDayMonth(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
 
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${day} ${MONTHS[date.getMonth()]}`;
+  // Figma writes "4 OCT", not "04 OCT"
+  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
 }
 
 /** Proposal date → "2 SEP 2025" */
