@@ -1,6 +1,6 @@
 import { useNetInfo } from '@react-native-community/netinfo';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -25,9 +25,11 @@ import { LiveVoteCard } from '../components/proposal-panels';
 import { ThermalScreen } from '../components/thermal-screen';
 import { TreasurySheet } from '../components/treasury-sheet';
 import { TabHeader } from '../components/tab-header';
+import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
 import { useFocusKey } from '../hooks/use-focus-key';
-import { DEMO_PROPOSAL_ID, DEMO_VOTE_ENABLED } from '../lib/demo-vote';
+import { createDemoProfile, DEMO_WRONG_CHAIN_ID, isDemoWrongNetwork } from '../lib/demo-power';
+import { createDemoProposal, DEMO_PROPOSAL_ID, DEMO_VOTE_ENABLED } from '../lib/demo-vote';
 import { formatCompact, formatInteger, tokenToNumber } from '../lib/format';
 import { getHeatProgress } from '../lib/heat-levels';
 import { isLiveProposal } from '../lib/proposal';
@@ -41,7 +43,12 @@ export function PulseScreen() {
   const router = useRouter();
   const focusKey = useFocusKey();
   const { metrics, isFetching, refetch } = usePepperTokenMetrics();
-  const { isWrongNetwork, switchToChiliz } = useWallet();
+  const wallet = useWallet();
+  const { switchToChiliz } = wallet;
+  // Dev-only: pepperdao://?demo=wrongnetwork shows a connected wallet on another chain
+  const isDemo = isDemoWrongNetwork(useLocalSearchParams<{ demo?: string }>().demo);
+  const isWrongNetwork = isDemo || wallet.isWrongNetwork;
+  const chainName = getChainName(isDemo ? DEMO_WRONG_CHAIN_ID : wallet.chainId);
   const netInfo = useNetInfo();
   const isOffline = netInfo.isConnected === false;
   const updatedAgo = metrics ? formatMinutesAgo(metrics.updatedAt) : null;
@@ -97,8 +104,9 @@ export function PulseScreen() {
 
   const liveProposal = useMemo(() => {
     const live = (proposals ?? []).filter(isLiveProposal);
-    return live.find((proposal) => proposal.type === 'PEP') ?? live[0] ?? null;
-  }, [proposals]);
+    const real = live.find((proposal) => proposal.type === 'PEP') ?? live[0] ?? null;
+    return real ?? (isDemo ? createDemoProposal() : null);
+  }, [proposals, isDemo]);
 
   function handleRefresh() {
     refetch();
@@ -114,6 +122,7 @@ export function PulseScreen() {
       <TabHeader
         title="PULSE"
         subtitle={isOffline && updatedAgo ? `LAST UPDATED ${updatedAgo.toUpperCase()}` : 'DAO TREASURY & TOKEN'}
+        accessory={<WalletChip demo={isDemo} />}
       />
 
       {isOffline ? (
@@ -127,7 +136,7 @@ export function PulseScreen() {
       ) : isWrongNetwork ? (
         <NoticeBanner
           label="WRONG NETWORK"
-          message="Your wallet is on another network"
+          message={chainName ? `Your wallet is on ${chainName}` : 'Your wallet is on another network'}
           tone="negative"
           actionLabel="SWITCH TO CHILIZ"
           onAction={() => void switchToChiliz()}
@@ -164,7 +173,12 @@ export function PulseScreen() {
         </View>
 
         {liveProposal ? (
-          <LiveVoteCard proposal={liveProposal} index={2} onOpen={() => router.push(`/governance/${liveProposal.id}`)} />
+          <LiveVoteCard
+            proposal={liveProposal}
+            index={2}
+            demoWallet={isDemo ? { isConnected: true, isWrongNetwork: true } : undefined}
+            onOpen={() => router.push(`/governance/${liveProposal.id}`)}
+          />
         ) : (
           <Panel index={2}>
             <Text style={[TYPE.label12, { color: INK.muted }]}>NO SIGNAL</Text>
@@ -182,7 +196,7 @@ export function PulseScreen() {
         />
       ) : null}
 
-      <HeatShortcut index={3} onPress={() => router.push('/power')} />
+      <HeatShortcut demo={isDemo} index={3} onPress={() => router.push('/power')} />
 
       <View style={{ gap: 10 }}>
         <SectionLabel label="PEPPER TOKEN" />
@@ -283,11 +297,16 @@ export function PulseScreen() {
 interface HeatShortcutProps {
   index: number;
   onPress: () => void;
+  /** Dev-only demo screens: show the demo profile as connected */
+  demo?: boolean;
 }
 
-function HeatShortcut({ index, onPress }: HeatShortcutProps) {
-  const { profile } = useUser();
-  const { isConnected } = useWallet();
+function HeatShortcut({ index, onPress, demo = false }: HeatShortcutProps) {
+  const user = useUser();
+  const wallet = useWallet();
+  const demoProfile = useMemo(() => (demo ? createDemoProfile() : null), [demo]);
+  const profile = demoProfile ?? user.profile;
+  const isConnected = demo || wallet.isConnected;
   const heat = profile && isConnected ? getHeatProgress(profile) : null;
   const streakWeeks = profile?.current_streak_weeks ?? 0;
 
@@ -321,6 +340,12 @@ function HeatShortcut({ index, onPress }: HeatShortcutProps) {
 /** Gold ">" at the right edge of a tappable card */
 function Chevron() {
   return <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>;
+}
+
+/** Name of a common wallet chain for the wrong-network banner; null when unknown */
+function getChainName(chainId: number | string | undefined): string | null {
+  if (chainId === undefined) return null;
+  return CHAIN_NAMES[Number(chainId)] ?? null;
 }
 
 /** ISO time → "2 min ago" / "just now" */
@@ -357,6 +382,16 @@ const FANX_SWAP_URL = 'https://app.fanx.xyz/trade/swap';
 const TREASURY_ADDRESS = '0x1d70027242A82362fd2c818bb2A3a2cAaA513816';
 const STAKING_ADDRESS = '0x5cA4C88339D89B2547a001003Cca84F62F557A72';
 const CEX_FUND_ADDRESS = '0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B';
+
+/** Chains a wallet is most likely to be on instead of Chiliz */
+const CHAIN_NAMES: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'Optimism',
+  56: 'BNB Chain',
+  137: 'Polygon',
+  8453: 'Base',
+  42161: 'Arbitrum',
+};
 
 const styles = StyleSheet.create({
   row: {

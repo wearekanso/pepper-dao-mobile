@@ -29,6 +29,8 @@ interface LiveVoteCardProps {
   proposal: GovernanceProposal;
   index?: number;
   onOpen: () => void;
+  /** Dev-only demo screens: wallet state to show instead of the real one */
+  demoWallet?: { isConnected: boolean; isWrongNetwork: boolean };
 }
 
 /**
@@ -36,11 +38,14 @@ interface LiveVoteCardProps {
  * vote bar, split and the wallet's own vote status. The LIVE NOW marker
  * sits above it, outside the card.
  */
-export function LiveVoteCard({ proposal, index = 0, onOpen }: LiveVoteCardProps) {
+export function LiveVoteCard({ proposal, index = 0, onOpen, demoWallet }: LiveVoteCardProps) {
   const split = getVoteSplit(proposal);
   const isActive = proposal.status === 'ACTIVE';
   const userVote = getUserVote(proposal);
-  const { isConnected, connect, isWrongNetwork, switchToChiliz } = useWallet();
+  const wallet = useWallet();
+  const { connect, switchToChiliz } = wallet;
+  const isConnected = demoWallet?.isConnected ?? wallet.isConnected;
+  const isWrongNetwork = demoWallet?.isWrongNetwork ?? wallet.isWrongNetwork;
 
   return (
     <Panel live index={index} onPress={onOpen}>

@@ -24,6 +24,14 @@ export function getDemoEligibility(param: string | Array<string> | undefined): P
 
 const WEI = BigInt(10) ** BigInt(18);
 
+/** Dev-only wallet state for Pulse: `pepperdao://?demo=wrongnetwork` */
+export function isDemoWrongNetwork(param: string | Array<string> | undefined): boolean {
+  return DEMO_VOTE_ENABLED && param === 'wrongnetwork';
+}
+
+/** Chain the demo wallet pretends to be on when it's on the wrong network */
+export const DEMO_WRONG_CHAIN_ID = 1;
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** What the demo wallet chip and YOUR WALLET sheet show */
