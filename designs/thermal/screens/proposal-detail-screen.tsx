@@ -24,7 +24,7 @@ import { ThermalScreen } from '../components/thermal-screen';
 import { VoteSheet } from '../components/vote-sheet';
 import { RepSticker, VoteStamp } from '../components/vote-stamp';
 import { useCountUp } from '../hooks/use-count-up';
-import { createDemoProposal, isDemoProposalId } from '../lib/demo-vote';
+import { createDemoProposal, DEMO_FAILURES, isDemoProposalId } from '../lib/demo-vote';
 import { formatCompact, formatCountdown, formatShortDate, shortenAddress, tokenToNumber } from '../lib/format';
 import {
   getActionSummary,
@@ -47,7 +47,7 @@ import { INK, STATUS_COLORS, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme'
  */
 export function ProposalDetailScreen() {
   const router = useRouter();
-  const { proposalId } = useLocalSearchParams<{ proposalId: string }>();
+  const { proposalId, fail } = useLocalSearchParams<{ proposalId: string; fail?: string }>();
   const isDemo = isDemoProposalId(proposalId);
   const demoProposal = useMemo(() => (isDemo ? createDemoProposal() : null), [isDemo]);
   const query = useGovernanceProposal({ proposalId: isDemo ? undefined : proposalId });
@@ -195,6 +195,7 @@ export function ProposalDetailScreen() {
 
           {canVote ? (
             <VoteSheet
+              demoFailure={isDemo && fail ? DEMO_FAILURES[fail] : undefined}
               visible={pendingOption !== null}
               onClose={() => setPendingOption(null)}
               proposal={proposal}

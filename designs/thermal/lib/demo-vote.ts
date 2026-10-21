@@ -51,8 +51,23 @@ export function createDemoProposal(): GovernanceProposal {
   };
 }
 
-export async function castDemoVote(): Promise<{ success: true; txHash: string }> {
+/**
+ * `pepperdao://governance/demo?fail=gas` (or `cancel`) makes the test vote fail
+ * with that wallet error, to see the NOT RECORDED state.
+ */
+export const DEMO_FAILURES: Record<string, string> = {
+  gas: 'insufficient funds for gas * price + value',
+  cancel: 'User rejected the request.',
+};
+
+/** CHZ the demo wallet holds when it fails for gas */
+export const DEMO_LOW_CHZ = 0.02;
+
+export async function castDemoVote(
+  failure?: string,
+): Promise<{ success: true; txHash: string } | { success: false; error: string }> {
   await new Promise((resolve) => setTimeout(resolve, DEMO_SIGN_DELAY_MS));
+  if (failure) return { success: false, error: failure };
   const hex = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
   return { success: true, txHash: `0x${hex}` };
 }

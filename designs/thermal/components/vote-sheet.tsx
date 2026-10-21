@@ -2,15 +2,18 @@ import * as Haptics from 'expo-haptics';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { useWalletInfo } from '@reown/appkit-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 
 import { useUser } from '@/contexts/user-context';
+import { useWallet } from '@/contexts/wallet-context';
 import { useVoting } from '@/hooks/use-voting';
 import { REPUTATION_POINTS } from '@/lib/reputation';
+import { fetchNativeBalance } from '@/services/chiliz-api';
 import type { GovernanceProposal, VoteOption } from '@/types/governance';
 
-import { castDemoVote, DEMO_VOTING_POWER, isDemoProposalId } from '../lib/demo-vote';
-import { formatDayMonth } from '../lib/format';
+import { castDemoVote, DEMO_LOW_CHZ, DEMO_VOTING_POWER, isDemoProposalId } from '../lib/demo-vote';
+import { formatDayMonth, tokenToNumber } from '../lib/format';
 import { getProposalLabel, getProposalTitle } from '../lib/proposal';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 import { ChevronLink, DashedDivider, StatusTag, Touchable } from './atoms';
@@ -26,6 +29,8 @@ interface VoteSheetProps {
   onClose: () => void;
   proposal: GovernanceProposal;
   initialOption?: CastOption;
+  /** Dev-only test vote: fail with this wallet error instead of succeeding */
+  demoFailure?: string;
   /** Called when the sheet closes after a recorded vote, with the REP it earned */
   onSuccess?: (txHash: string, option: CastOption, points: number) => void;
 }
@@ -35,14 +40,16 @@ interface VoteSheetProps {
  * either the VOTED stamp with what you earned, or why it wasn't recorded.
  * The caller learns about a successful vote when the sheet closes.
  */
-export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess }: VoteSheetProps) {
+export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess, demoFailure }: VoteSheetProps) {
   const [selected, setSelected] = useState<CastOption | null>(initialOption ?? null);
   const [result, setResult] = useState<CastResult | null>(null);
   const isDemo = isDemoProposalId(proposal.id);
   const { profile } = useUser();
   const [isFirstVote, setIsFirstVote] = useState(!profile?.has_voted);
   const voting = useVoting(isDemo ? undefined : proposal.pluginProposalId);
-  const { txError, resetTxState } = voting;
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const txError = isDemo ? demoError : voting.txError;
+  const resetTxState = voting.resetTxState;
   const [isDemoPending, setIsDemoPending] = useState(false);
   const isPending = isDemo ? isDemoPending : voting.txStatus === 'pending';
   const isLoading = isDemo ? false : voting.isLoading;
@@ -63,8 +70,11 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
     if (!selected) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isDemo) setIsDemoPending(true);
-    const outcome = isDemo ? await castDemoVote() : await voting.vote(proposal.pluginProposalId, selected);
-    if (isDemo) setIsDemoPending(false);
+    const outcome = isDemo ? await castDemoVote(demoFailure) : await voting.vote(proposal.pluginProposalId, selected);
+    if (isDemo) {
+      setIsDemoPending(false);
+      if (!outcome.success) setDemoError(outcome.error ?? 'Vote failed');
+    }
     if (outcome.success && outcome.txHash) {
       setResult({ txHash: outcome.txHash, option: selected, date: new Date() });
     }
@@ -77,6 +87,11 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
 
   function handleRetry() {
     resetTxState();
+    setDemoError(null);
+  }
+
+  async function handleGetChz() {
+    await openBrowserAsync(FANX_SWAP_URL, { presentationStyle: WebBrowserPresentationStyle.AUTOMATIC });
   }
 
   const powerLine = isLoading ? 'READING…' : `${formattedVotingPower} vePEPPER`;
@@ -94,7 +109,12 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
         ) : phase === 'confirm' ? (
           <PixelButton label="WAITING FOR WALLET…" variant="gold" disabled style={{ flex: 1 }} />
         ) : phase === 'failed' ? (
-          <PixelButton label="TRY AGAIN" variant="gold" style={{ flex: 1 }} onPress={handleRetry} />
+          <>
+            {txError && isGasError(txError) ? (
+              <PixelButton label="GET CHZ" variant="outline" style={{ alignSelf: 'auto' }} onPress={() => void handleGetChz()} />
+            ) : null}
+            <PixelButton label="TRY AGAIN" variant="gold" style={{ flex: 1 }} onPress={handleRetry} />
+          </>
         ) : (
           <PixelButton
             label={selected ? `VOTE ${selected} >` : 'PICK AN OPTION'}
@@ -128,7 +148,7 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
           showTx={!isDemo}
         />
       ) : null}
-      {phase === 'failed' && txError ? <FailedBody error={txError} /> : null}
+      {phase === 'failed' && txError ? <FailedBody error={txError} isDemo={isDemo} /> : null}
     </ThermalSheet>
   );
 }
@@ -312,16 +332,39 @@ function ResultBox({ label, value, hint }: { label: string; value: string; hint:
   );
 }
 
-function FailedBody({ error }: { error: string }) {
+function FailedBody({ error, isDemo }: { error: string; isDemo: boolean }) {
   const reason = getFailureReason(error);
+  const isGas = isGasError(error);
+  const { address } = useWallet();
+  const { data: native } = useQuery({
+    queryKey: ['thermal', 'nativeBalance', address],
+    queryFn: () => fetchNativeBalance(address!),
+    enabled: isGas && !isDemo && Boolean(address),
+  });
+  const chz = isDemo ? DEMO_LOW_CHZ : native ? tokenToNumber(native.balance, 18) : null;
 
   return (
     <>
       <StatusTag label="NOT RECORDED" status="negative" />
       <Text style={TYPE.display24}>{reason.title}</Text>
       <Text style={[TYPE.body14, { color: INK.body }]}>{reason.body}</Text>
+      {isGas && chz !== null ? (
+        <View style={styles.chzBox}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR CHZ</Text>
+          <Text style={TYPE.meta18}>{`${formatChz(chz)} / ~${GAS_CHZ_NEEDED} needed`}</Text>
+        </View>
+      ) : null}
     </>
   );
+}
+
+function isGasError(error: string): boolean {
+  return /insufficient funds|gas/i.test(error);
+}
+
+/** Small CHZ amounts keep two decimals ("0.02") */
+function formatChz(value: number): string {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 
 function ProposalHeading({ proposal }: { proposal: GovernanceProposal }) {
@@ -338,10 +381,10 @@ function getFailureReason(error: string): { title: string; body: string } {
   if (/reject|denied|cancel/i.test(error)) {
     return { title: 'YOU CANCELLED IT', body: 'You cancelled the request in your wallet. Nothing was sent — try again when ready.' };
   }
-  if (/insufficient funds|gas/i.test(error)) {
+  if (isGasError(error)) {
     return {
       title: 'NOT ENOUGH CHZ FOR GAS',
-      body: 'Voting is free, but Chiliz needs a tiny fee to record it. Add a little CHZ to your wallet and try again.',
+      body: `Voting is free, but Chiliz needs a tiny fee to record it. Add about ${GAS_CHZ_NEEDED} CHZ to your wallet and try again.`,
     };
   }
   if (/network|chain/i.test(error)) {
@@ -381,7 +424,20 @@ const OPTIONS: Array<{ value: CastOption; hint: string; color: string }> = [
   { value: 'ABSTAIN', hint: 'Count toward quorum, no side', color: THERMAL_COLORS.mist },
 ];
 
+/** Rough CHZ a vote's gas needs, shown when a vote fails for gas */
+const GAS_CHZ_NEEDED = 0.5;
+const FANX_SWAP_URL = 'https://app.fanx.xyz/trade/swap';
+
 const styles = StyleSheet.create({
+  chzBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACE.rowX,
+    paddingVertical: 12,
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.border,
+  },
   power: {
     flexDirection: 'row',
     alignItems: 'center',
