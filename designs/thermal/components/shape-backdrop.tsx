@@ -33,13 +33,12 @@ interface ShapeBackdropProps {
 /**
  * Onboarding backdrop: a Figma heat shape (six blurred pixel bands on the
  * sensor grid, pre-rendered from Figma) animated exactly like the Power heat camera — every band
- * breathes like the Power backdrop's heat blobs, and the 09 FLIP pixel wave
- * draws the shape like a pen: it runs along the hottest band in the shape's
- * direction (heartbeat and wave left → right like a monitor, the check from
- * its left tip, the bolt falling from the top) and the glow around the stroke
- * flips a beat after the pen passes. Colours come from the shape.
- * Switching shape cross-fades the bands; the old wave fades out first and the
- * new one starts drawing from the beginning, so old and new pixels never mix.
+ * breathes like the Power backdrop's heat blobs, and the 09 FLIP pixels pulse
+ * out of the shape's hottest band twice ("ba-dum"), then rest. The pulse keeps
+ * the shape's outline (a distance field from the band) and fades out a short
+ * way from it. Colours come from the shape.
+ * Switching shape cross-fades the bands; the old pulse fades out first and the
+ * new one starts from the beginning, so old and new pixels never mix.
  */
 export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
   const scale = width / FIGMA_WIDTH;
@@ -54,31 +53,33 @@ export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
     return () => clearTimeout(timer);
   }, [shape, isWaveSwitching]);
   const bands = useMemo(() => BACKDROP_SHAPES[waveShape].bands.map(buildBand), [waveShape]);
-  const axis = DRAW_AXIS[waveShape];
-  const penField = useMemo(() => buildPenField(bands[bands.length - 1], axis), [bands, axis]);
+  const core = bands[bands.length - 1];
+  const pulseField = useMemo(() => buildPulseField(core), [core]);
 
-  // How far the pen has to travel before it reaches a cell
+  // Distance from the hottest band; past PULSE_REACH the pulse has faded and cells stay still
   const distanceAt = useCallback(
     (x: number, y: number) => {
       const column = Math.min(GRID_COLUMNS - 1, Math.max(0, Math.floor(x / scale / CELL)));
       const row = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(y / scale / CELL)));
-      return penField[row * GRID_COLUMNS + column] * scale;
+      const distance = pulseField.distance[row * GRID_COLUMNS + column];
+      return distance > PULSE_REACH ? Infinity : distance * scale;
     },
-    [penField, scale],
+    [pulseField, scale],
   );
 
-  // Same lookup the FLIP faces use on Power: colour of the hottest band under a point
+  // Like the Power FLIP lookup, but one band hotter than what's underneath, so
+  // the beat reads as a flush of heat passing over the shape
   const sampleColor = useCallback(
     (x: number, y: number) => {
       const fx = x / scale;
       const row = Math.floor(y / scale / CELL) * CELL;
       for (let index = bands.length - 1; index >= 0; index--) {
         const runs = bands[index].rows.get(row);
-        if (runs?.some(([x0, x1]) => fx >= x0 && fx < x1)) return BAND_COLORS[index];
+        if (runs?.some(([x0, x1]) => fx >= x0 && fx < x1)) return BAND_COLORS[Math.min(index + 1, BAND_COLORS.length - 1)];
       }
-      return y / height < 0.5 ? BACKDROP_GRADIENT[0] : BACKDROP_GRADIENT[1];
+      return BAND_COLORS[0];
     },
-    [bands, scale, height],
+    [bands, scale],
   );
 
   return (
@@ -103,14 +104,15 @@ export function ShapeBackdrop({ shape, width, height }: ShapeBackdropProps) {
 
       {isWaveSwitching ? null : (
         <Animated.View key={`wave-${waveShape}`} entering={fadeIn()} exiting={fadeOut()} style={StyleSheet.absoluteFill}>
-          {/* Centre far off-screen on the pen's start side, so card faces sample along the stroke */}
           <PixelCore
             width={width}
             height={height * WAVE_AREA}
-            centerX={axis === 'x' ? -width * PEN_SOURCE_AWAY : width / 2}
-            centerY={axis === 'x' ? height / 2 : -height * PEN_SOURCE_AWAY}
+            centerX={pulseField.center.x * scale}
+            centerY={pulseField.center.y * scale}
             sampleColor={sampleColor}
             distanceAt={distanceAt}
+            beatGap={BEAT_GAP * scale}
+            cycleMs={PULSE_CYCLE_MS}
             variant="flip"
           />
         </Animated.View>
@@ -179,34 +181,31 @@ function buildBand(runs: Array<number>): Band {
 }
 
 /**
- * Pen distance for every 10pt grid cell, in Figma points: how far along the
- * stroke (its x or y) the nearest cell of `band` sits, plus a lag for how far
- * the cell is from the stroke. Two chamfer passes carry the nearest stroke
- * cell's position outward.
+ * Chamfer distance (10 straight, 14 diagonal) from every 10pt grid cell to the
+ * nearest cell of `band`, in Figma points, plus the band's centre (where card
+ * faces sample "outward" from).
  */
-function buildPenField(band: Band, axis: DrawAxis): Float32Array {
+function buildPulseField(band: Band): { distance: Float32Array; center: { x: number; y: number } } {
   const distance = new Float32Array(GRID_COLUMNS * GRID_ROWS).fill(Infinity);
-  const along = new Float32Array(GRID_COLUMNS * GRID_ROWS);
-  let start = Infinity;
+  let sumX = 0;
+  let sumY = 0;
+  let count = 0;
 
   for (const [y, runs] of band.rows) {
     const row = y / CELL;
     if (row < 0 || row >= GRID_ROWS) continue;
     for (const [x0, x1] of runs) {
       for (let column = Math.max(0, Math.floor(x0 / CELL)); column < Math.min(GRID_COLUMNS, Math.ceil(x1 / CELL)); column++) {
-        const index = row * GRID_COLUMNS + column;
-        distance[index] = 0;
-        along[index] = (axis === 'x' ? column : row) * CELL;
-        start = Math.min(start, along[index]);
+        distance[row * GRID_COLUMNS + column] = 0;
+        sumX += column * CELL + CELL / 2;
+        sumY += y + CELL / 2;
+        count++;
       }
     }
   }
 
   const relax = (index: number, neighbour: number, cost: number) => {
-    if (distance[neighbour] + cost < distance[index]) {
-      distance[index] = distance[neighbour] + cost;
-      along[index] = along[neighbour];
-    }
+    if (distance[neighbour] + cost < distance[index]) distance[index] = distance[neighbour] + cost;
   };
   for (let row = 0; row < GRID_ROWS; row++) {
     for (let column = 0; column < GRID_COLUMNS; column++) {
@@ -231,11 +230,7 @@ function buildPenField(band: Band, axis: DrawAxis): Float32Array {
     }
   }
 
-  const field = new Float32Array(GRID_COLUMNS * GRID_ROWS);
-  for (let index = 0; index < field.length; index++) {
-    field[index] = along[index] - start + distance[index] * PEN_SPREAD_LAG;
-  }
-  return field;
+  return { distance, center: count > 0 ? { x: sumX / count, y: sumY / count } : { x: FIGMA_WIDTH / 2, y: 0 } };
 }
 
 const FIGMA_WIDTH = 402;
@@ -249,17 +244,12 @@ const GRID_ROWS = Math.ceil(FIGMA_HEIGHT / CELL);
 /** Chamfer steps between neighbouring cells, in points */
 const STRAIGHT = CELL;
 const DIAGONAL = 14;
-/** Which way the pen draws each shape: along x (left → right) or y (top → bottom) */
-const DRAW_AXIS: Record<BackdropName, DrawAxis> = {
-  heartbeat: 'x',
-  check: 'x',
-  bolt: 'y',
-  wave: 'x',
-};
-/** Glow away from the stroke flips this much later per point of distance */
-const PEN_SPREAD_LAG = 0.6;
-/** Screen sizes between the pen's start side and the virtual wave source */
-const PEN_SOURCE_AWAY = 10;
+/** How far out of the hottest band the pulse travels before it fades, in Figma points */
+const PULSE_REACH = 150;
+/** Distance between the two beats' fronts ("ba-dum"), in Figma points */
+const BEAT_GAP = 70;
+/** One ba-dum plus the rest before the next, in ms */
+const PULSE_CYCLE_MS = 2600;
 
 /*
  * Breathing timing — identical to ThermalBackground's HeatBlob so the
@@ -277,4 +267,3 @@ const styles = StyleSheet.create({
   },
 });
 
-type DrawAxis = 'x' | 'y';

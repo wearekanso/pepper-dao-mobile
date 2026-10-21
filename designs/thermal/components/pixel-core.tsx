@@ -36,6 +36,13 @@ interface PixelCoreProps {
    * rings; pass a shape's distance field to make the wave follow that shape.
    */
   distanceAt?: (x: number, y: number) => number;
+  /**
+   * Flip variant only: a second wave follows the first this many points
+   * behind it ("ba-dum"). Cells whose distance is not finite never flip.
+   */
+  beatGap?: number;
+  /** Flip variant only: length of one full cycle in ms (default FLIP_DURATION) */
+  cycleMs?: number;
 }
 
 export type PixelCoreVariant = 'flicker' | 'ripple' | 'embers' | 'spread' | 'lift' | 'heartbeat' | 'shockwave' | 'heatwave' | 'flip';
@@ -57,8 +64,27 @@ export const PIXEL_CORE_VARIANTS: Array<{ value: PixelCoreVariant; label: string
  * noise. Two differently-seeded frames cross-fade so the core flickers like
  * a live thermal reading.
  */
-export function PixelCore({ variant = 'flicker', gridOffsetY = 0, sampleColor = sampleNothing, distanceAt, ...props }: PixelCoreProps) {
-  if (variant === 'flip') return <FlipCore {...props} gridOffsetY={gridOffsetY} sampleColor={sampleColor} distanceAt={distanceAt} />;
+export function PixelCore({
+  variant = 'flicker',
+  gridOffsetY = 0,
+  sampleColor = sampleNothing,
+  distanceAt,
+  beatGap = 0,
+  cycleMs = FLIP_DURATION,
+  ...props
+}: PixelCoreProps) {
+  if (variant === 'flip') {
+    return (
+      <FlipCore
+        {...props}
+        gridOffsetY={gridOffsetY}
+        sampleColor={sampleColor}
+        distanceAt={distanceAt}
+        beatGap={beatGap}
+        cycleMs={cycleMs}
+      />
+    );
+  }
   if (variant === 'ripple') return <RippleCore {...props} />;
   if (variant === 'embers') return <EmberCore {...props} />;
   if (variant === 'spread') return <SpreadCore {...props} />;
@@ -69,7 +95,7 @@ export function PixelCore({ variant = 'flicker', gridOffsetY = 0, sampleColor = 
   return <FlickerCore {...props} />;
 }
 
-type CoreProps = Omit<PixelCoreProps, 'variant' | 'gridOffsetY' | 'sampleColor' | 'distanceAt'>;
+type CoreProps = Omit<PixelCoreProps, 'variant' | 'gridOffsetY' | 'sampleColor' | 'distanceAt' | 'beatGap' | 'cycleMs'>;
 
 function sampleNothing(): string {
   return THERMAL_COLORS.magenta;
@@ -305,26 +331,36 @@ function FlipCore({
   gridOffsetY,
   sampleColor,
   distanceAt,
+  beatGap,
+  cycleMs,
 }: CoreProps & {
   gridOffsetY: number;
   sampleColor: (x: number, y: number) => string;
   distanceAt?: (x: number, y: number) => number;
+  beatGap: number;
+  cycleMs: number;
 }) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withRepeat(withTiming(1, { duration: FLIP_DURATION, easing: Easing.linear }), -1, false);
-  }, [progress]);
+    progress.value = withRepeat(withTiming(1, { duration: cycleMs, easing: Easing.linear }), -1, false);
+  }, [progress, cycleMs]);
 
   const { groups, travel } = useMemo(
-    () => buildFlipGroups(width, height, centerX, centerY, gridOffsetY, sampleColor, distanceAt),
-    [width, height, centerX, centerY, gridOffsetY, sampleColor, distanceAt],
+    () => buildFlipGroups(width, height, centerX, centerY, gridOffsetY, sampleColor, distanceAt, beatGap),
+    [width, height, centerX, centerY, gridOffsetY, sampleColor, distanceAt, beatGap],
   );
 
   return (
     <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
       {groups.map((group) => (
-        <FlipGroup key={`${group.radius}-${group.front}-${group.back}`} group={group} travel={travel} progress={progress} />
+        <FlipGroup
+          key={`${group.radius}-${group.front}-${group.back}`}
+          group={group}
+          travel={travel}
+          beatGap={beatGap}
+          progress={progress}
+        />
       ))}
     </Svg>
   );
@@ -338,9 +374,21 @@ interface FlipGroupData {
   corners: Array<number>;
 }
 
-function FlipGroup({ group, travel, progress }: { group: FlipGroupData; travel: number; progress: SharedValue<number> }) {
+interface FlipGroupProps {
+  group: FlipGroupData;
+  travel: number;
+  beatGap: number;
+  progress: SharedValue<number>;
+}
+
+function FlipGroup({ group, travel, beatGap, progress }: FlipGroupProps) {
   // 0 → 1 across this ring's flip: front folds (0–0.2), back opens (0.2–0.4), hold, back folds, front opens
-  const turn = useDerivedValue(() => (progress.value * travel - group.radius) / FLIP_SPAN);
+  const turn = useDerivedValue(() => {
+    const first = (progress.value * travel - group.radius) / FLIP_SPAN;
+    if (beatGap <= 0 || (first > 0 && first < 1)) return first;
+    // Second beat: the same wave again, beatGap points behind the first
+    return (progress.value * travel - beatGap - group.radius) / FLIP_SPAN;
+  });
 
   const cardPath = (widthFactor: number, t: number) => {
     'worklet';
@@ -402,6 +450,7 @@ function buildFlipGroups(
   gridOffsetY: number,
   sampleColor: (x: number, y: number) => string,
   distanceAt?: (x: number, y: number) => number,
+  beatGap = 0,
 ) {
   const groups = new Map<string, FlipGroupData>();
   let maxRadius = 0;
@@ -413,6 +462,8 @@ function buildFlipGroups(
       const cy = y + CELL / 2;
       const distance = Math.hypot(cx - centerX, cy - centerY);
       const radius = Math.round((distanceAt ? distanceAt(cx, cy) : distance) / CELL) * CELL;
+      // Out of the wave's reach (a shape's cutoff): this cell never flips
+      if (!Number.isFinite(radius)) continue;
       maxRadius = Math.max(maxRadius, radius);
 
       // Unit vector pointing away from the hotspot (any direction at the very centre)
@@ -429,7 +480,7 @@ function buildFlipGroups(
   }
 
   // Extra travel past the rim leaves a short rest beat before the next wave
-  return { groups: Array.from(groups.values()), travel: maxRadius + FLIP_SPAN + FLIP_REST };
+  return { groups: Array.from(groups.values()), travel: maxRadius + beatGap + FLIP_SPAN + FLIP_REST };
 }
 
 /** Cell centers bucketed into CELL-wide rings around the center (flat x,y pairs) */
