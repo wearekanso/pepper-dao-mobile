@@ -96,7 +96,7 @@ export function PowerScreen() {
         </>
       ) : null}
 
-      <StakeSheet visible={isStakeOpen} onClose={() => setIsStakeOpen(false)} />
+      <StakeSheet visible={isStakeOpen} demo={isDemo} onClose={() => setIsStakeOpen(false)} />
       {profile ? <HowToEarnSheet visible={isHowToOpen} profile={profile} onClose={() => setIsHowToOpen(false)} /> : null}
     </ThermalScreen>
   );

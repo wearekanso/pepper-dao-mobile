@@ -4,7 +4,8 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useStaking } from '@/hooks/use-staking';
 
-import { formatCompact, formatInteger } from '../lib/format';
+import { DEMO_WALLET } from '../lib/demo-power';
+import { formatAmount, formatInteger } from '../lib/format';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 import { FilterChip, Touchable } from './atoms';
 import { HardShadow } from './panel';
@@ -15,35 +16,28 @@ interface StakeSheetProps {
   visible: boolean;
   onClose: () => void;
   onSuccess?: (txHash: string, operation: Operation) => void;
+  /** Dev-only demo screens: demo wallet balances; submitting just closes */
+  demo?: boolean;
 }
 
 /**
  * Stake / unstake PEPPER for vePEPPER voting power. Same flow as the legacy
  * StakeModal (approve → stake, or unstake) on top of useStaking.
  */
-export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
+export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeSheetProps) {
   const [mode, setMode] = useState<Operation>('stake');
   const [amount, setAmount] = useState('');
-  const {
-    stakingData,
-    isLoading,
-    error: queryError,
-    txStatus,
-    txError,
-    formattedWalletBalance,
-    formattedStakedBalance,
-    canStake,
-    canUnstake,
-    needsApproval,
-    approve,
-    stake,
-    unstake,
-    refetch,
-  } = useStaking();
+  const staking = useStaking();
+  const { stakingData, error: queryError, txStatus, txError, approve, stake, unstake, refetch } = staking;
+  const isLoading = demo ? false : staking.isLoading;
 
   const isPending = txStatus === 'pending';
-  const walletBalance = parseFloat(formattedWalletBalance) || 0;
-  const stakedBalance = parseFloat(formattedStakedBalance) || 0;
+  const walletBalance = demo ? DEMO_WALLET.pepper : parseFloat(staking.formattedWalletBalance) || 0;
+  const stakedBalance = demo ? DEMO_WALLET.vePepper : parseFloat(staking.formattedStakedBalance) || 0;
+  // The demo wallet has never approved staking, so it shows the two-step flow
+  const canStake = (value: string) => (demo ? (parseFloat(value) || 0) <= walletBalance : staking.canStake(value));
+  const canUnstake = (value: string) => (demo ? (parseFloat(value) || 0) <= stakedBalance : staking.canUnstake(value));
+  const needsApproval = (value: string) => (demo ? true : staking.needsApproval(value));
   const maxAmount = mode === 'stake' ? walletBalance : stakedBalance;
   const amountNum = parseFloat(amount) || 0;
 
@@ -70,6 +64,10 @@ export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
 
   async function handleSubmit() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (demo) {
+      handleClose();
+      return;
+    }
 
     if (isStake) {
       if (requiresApproval) {
@@ -124,8 +122,8 @@ export function StakeSheet({ visible, onClose, onSuccess }: StakeSheetProps) {
       </View>
 
       <View style={[styles.row, { gap: 12 }]}>
-        <Balance label="IN WALLET" value={isLoading ? '…' : formatCompact(walletBalance)} highlight={isStake} />
-        <Balance label="STAKED" value={isLoading ? '…' : formatCompact(stakedBalance)} highlight={!isStake} />
+        <Balance label="IN WALLET" value={isLoading ? '…' : formatAmount(walletBalance)} highlight={isStake} />
+        <Balance label="STAKED" value={isLoading ? '…' : formatAmount(stakedBalance)} highlight={!isStake} />
       </View>
 
       {queryError && !stakingData ? (
