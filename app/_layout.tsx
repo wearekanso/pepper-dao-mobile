@@ -197,8 +197,9 @@ export default function RootLayout() {
             <OnboardingProvider>
               <WalletProvider>
                 <WalletProfileLinker>
-                  <OnboardingGate>
-                    <DesignProvider>
+                  {/* Outside the gate so the thermal wallet picker also works during onboarding */}
+                  <DesignProvider>
+                    <OnboardingGate>
                       <Stack
                         screenOptions={
                           SCREEN_BACKGROUND ? { contentStyle: { backgroundColor: SCREEN_BACKGROUND } } : undefined
@@ -213,7 +214,10 @@ export default function RootLayout() {
                         <Stack.Screen
                           name="governance/create"
                           options={{
-                            presentation: 'modal',
+                            // Full-screen page (Figma: status bar + close nav bar), not a card sheet.
+                            // A plain stack page, not a native modal, so the wallet picker can open on top
+                            presentation: IS_THERMAL ? 'card' : 'modal',
+                            animation: IS_THERMAL ? 'slide_from_bottom' : undefined,
                             headerShown: false,
                           }}
                         />
@@ -226,8 +230,8 @@ export default function RootLayout() {
                           options={{ headerShown: false, animation: 'slide_from_bottom' }}
                         />
                       </Stack>
-                    </DesignProvider>
-                  </OnboardingGate>
+                    </OnboardingGate>
+                  </DesignProvider>
                   <StatusBar style={SCREEN_BACKGROUND ? 'light' : 'dark'} />
 
                   {/* AppKit Modal - Android requires absolute positioning with Expo Router */}

@@ -30,6 +30,52 @@ export const THERMAL_COLORS = {
   borderSoft: 'rgba(255,255,255,0.25)',
   divider: 'rgba(255,255,255,0.12)',
   ghost: 'rgba(255,255,255,0.12)',
+  /** V2: pepper green, only for positive status */
+  pepperGreen: '#3FD15A',
+} as const;
+
+/** V2 white text levels on the void background */
+export const INK = {
+  strong: 'rgba(255,255,255,0.9)',
+  body: 'rgba(255,255,255,0.85)',
+  muted: 'rgba(255,255,255,0.6)',
+  faint: 'rgba(255,255,255,0.4)',
+} as const;
+
+/**
+ * V2 status colors (app-wide). Stroke + text of the same color; never a
+ * filled chip — except UPCOMING, which the design shows as a violet block.
+ * Vote colors (VOTE_COLORS) are separate and never mixed with these.
+ */
+export const STATUS_COLORS = {
+  /** APPROVED, MET, DONE, ELIGIBLE, PASSED, EXECUTED, finished step */
+  positive: { stroke: THERMAL_COLORS.pepperGreen, text: THERMAL_COLORS.pepperGreen },
+  /** WAITING, NOT YET */
+  waiting: { stroke: 'rgba(255,255,255,0.25)', text: INK.faint },
+  /** REJECTED, NOT RECORDED */
+  negative: { stroke: THERMAL_COLORS.red, text: THERMAL_COLORS.red },
+  /** LIVE NOW: white box with a red dot */
+  live: { stroke: THERMAL_COLORS.white, text: THERMAL_COLORS.white, dot: THERMAL_COLORS.red },
+  /** UPCOMING */
+  upcoming: { stroke: THERMAL_COLORS.violet, text: THERMAL_COLORS.white, fill: THERMAL_COLORS.violet },
+} as const;
+
+/** V2 fixed sizes (Figma "Düzen kuralları") */
+export const SIZE = {
+  /** Chips and small buttons share one height */
+  chip: 27,
+  /** Full-size buttons */
+  button: 44,
+  /** Square back / close button in the top nav bar */
+  navButton: 36,
+  /** Tab screen title block (title + wallet chip) */
+  tabHeader: 66,
+  /** Card and chip stroke */
+  stroke: 2,
+  /** Hard black card shadow offset */
+  shadow: 4,
+  /** Pixel art sensor grid cell */
+  pixelCell: 10,
 } as const;
 
 /** Cold → hot ramp used by scales, bars and the pixelated core */
@@ -67,6 +113,8 @@ export const SPACE = {
   rowX: 14,
   /** Vertical padding of full-size buttons */
   button: 14,
+  /** V2: section label → its content */
+  label: 10,
 } as const;
 
 export const TYPE = StyleSheet.create({
@@ -80,6 +128,8 @@ export const TYPE = StyleSheet.create({
   meta18: { fontFamily: FONTS.display, fontSize: 18, lineHeight: 20, letterSpacing: 0.5, color: THERMAL_COLORS.white },
   meta16: { fontFamily: FONTS.display, fontSize: 16, lineHeight: 18, letterSpacing: 0.5, color: THERMAL_COLORS.white },
   label15: { fontFamily: FONTS.label, fontSize: 15, letterSpacing: 1, color: THERMAL_COLORS.white },
+  /** V2: buttons, nav and sheet titles */
+  label14: { fontFamily: FONTS.label, fontSize: 14, letterSpacing: 1, color: THERMAL_COLORS.white },
   label12: { fontFamily: FONTS.label, fontSize: 12, letterSpacing: 1, color: THERMAL_COLORS.white },
   label10: { fontFamily: FONTS.label, fontSize: 10, letterSpacing: 1, color: THERMAL_COLORS.white },
   body14: { fontFamily: FONTS.body, fontSize: 14, lineHeight: 21, color: 'rgba(255,255,255,0.85)' },

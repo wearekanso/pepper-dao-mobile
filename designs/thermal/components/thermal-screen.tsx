@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
-import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import Animated, { type SharedValue, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -19,6 +19,8 @@ interface ThermalScreenProps {
   overlay?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** Pass one in to read the scroll offset from the screen's content */
+  scrollY?: SharedValue<number>;
   /** Fixed top bar for pushed screens; content starts below it */
   navBar?: {
     title: string;
@@ -42,9 +44,11 @@ export function ThermalScreen({
   refreshing = false,
   onRefresh,
   navBar,
+  scrollY: externalScrollY,
 }: ThermalScreenProps) {
   const insets = useSafeAreaInsets();
-  const scrollY = useSharedValue(0);
+  const ownScrollY = useSharedValue(0);
+  const scrollY = externalScrollY ?? ownScrollY;
   const focusKey = useFocusKey();
 
   const onScroll = useAnimatedScrollHandler((event) => {

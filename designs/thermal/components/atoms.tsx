@@ -12,11 +12,13 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { usePressFeedback } from '../hooks/use-press-feedback';
-import { THERMAL_COLORS, TYPE } from '../theme';
+import { INK, SIZE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
 interface TouchableProps extends Omit<PressableProps, 'style' | 'children'> {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Style for the outer pressable, e.g. `flex: 1` inside a row */
+  containerStyle?: StyleProp<ViewStyle>;
   pressedOpacity?: number;
 }
 
@@ -24,13 +26,14 @@ interface TouchableProps extends Omit<PressableProps, 'style' | 'children'> {
  * Pressable with a static style and a fade on press. NativeWind's Pressable
  * interop drops function-style props, so press feedback lives in an inner view.
  */
-export function Touchable({ children, style, pressedOpacity = 0.6, onPressIn, onPressOut, ...rest }: TouchableProps) {
+export function Touchable({ children, style, containerStyle, pressedOpacity = 0.6, onPressIn, onPressOut, ...rest }: TouchableProps) {
   const { pressed, pressHandlers } = usePressFeedback();
   const animatedStyle = useAnimatedStyle(() => ({ opacity: 1 - pressed.value * (1 - pressedOpacity) }));
 
   return (
     <Pressable
       {...rest}
+      style={containerStyle}
       onPressIn={(event) => {
         pressHandlers.onPressIn();
         onPressIn?.(event);
@@ -64,7 +67,7 @@ export function Tag({ label, color = THERMAL_COLORS.orange, textColor, variant =
           : { backgroundColor: color },
       ]}
     >
-      <Text style={[TYPE.label10, { color: textColor ?? (isOutline ? THERMAL_COLORS.white : THERMAL_COLORS.void) }]}>
+      <Text style={[TYPE.label12, { color: textColor ?? (isOutline ? THERMAL_COLORS.white : THERMAL_COLORS.void) }]}>
         {label}
       </Text>
     </View>
@@ -103,6 +106,52 @@ interface StatusLabelProps {
   label: string;
   dotColor?: string;
   blink?: boolean;
+}
+
+interface LiveMarkerProps {
+  /** "LIVE NOW" above a live card, "LIVE" in a detail screen's tag row */
+  label?: string;
+}
+
+/** V2 live state: white 13pt box with a blinking red dot, then the label */
+export function LiveMarker({ label = 'LIVE NOW' }: LiveMarkerProps) {
+  return (
+    <View style={styles.row6}>
+      <View style={styles.liveBox}>
+        <BlinkDot color={STATUS_COLORS.live.dot} size={LIVE_DOT} />
+      </View>
+      <Text style={[TYPE.label12, { color: STATUS_COLORS.live.text }]}>{label}</Text>
+    </View>
+  );
+}
+
+/** V2 section label outside a card (PEPPER TOKEN, SUMMARY …) */
+export function SectionLabel({ label }: { label: string }) {
+  return <Text style={[TYPE.label12, { color: INK.muted }]}>{label}</Text>;
+}
+
+export type StatusKind = keyof typeof STATUS_COLORS;
+
+interface StatusTagProps {
+  label: string;
+  status: StatusKind;
+}
+
+/**
+ * V2 status tag: stroke + text in the status color (APPROVED, WAITING,
+ * REJECTED …). UPCOMING is the one filled block, as in the design.
+ */
+export function StatusTag({ label, status }: StatusTagProps) {
+  if (status === 'live') return <LiveMarker label={label} />;
+
+  const colors = STATUS_COLORS[status];
+  const fill = 'fill' in colors ? colors.fill : undefined;
+
+  return (
+    <View style={[styles.tag, fill ? { backgroundColor: fill } : { borderWidth: 1, borderColor: colors.stroke }]}>
+      <Text style={[TYPE.label12, { color: colors.text }]}>{label}</Text>
+    </View>
+  );
 }
 
 /** "■ LIVE NOW" section label */
@@ -146,7 +195,7 @@ export function ChevronLink({ label, onPress }: ChevronLinkProps) {
       }}
       style={styles.row6}
     >
-      <Text style={[TYPE.meta16, { color: THERMAL_COLORS.gold }]}>{label}</Text>
+      <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{label}</Text>
       <Animated.Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }, chevronStyle]}>{'>'}</Animated.Text>
     </Touchable>
   );
@@ -176,10 +225,11 @@ interface FilterChipProps {
   label: string;
   isActive: boolean;
   onPress: () => void;
+  style?: StyleProp<ViewStyle>;
 }
 
 /** Segment / filter chip — gold when active (ALL · ADMIN · PEP, 24H · 7D …) */
-export function FilterChip({ label, isActive, onPress }: FilterChipProps) {
+export function FilterChip({ label, isActive, onPress, style }: FilterChipProps) {
   return (
     <Touchable
       onPress={() => {
@@ -192,8 +242,9 @@ export function FilterChip({ label, isActive, onPress }: FilterChipProps) {
           ? { backgroundColor: THERMAL_COLORS.gold, borderColor: THERMAL_COLORS.gold }
           : { borderColor: THERMAL_COLORS.border },
       ]}
+      containerStyle={style}
     >
-      <Text style={[TYPE.label10, { color: isActive ? THERMAL_COLORS.void : 'rgba(255,255,255,0.6)' }]}>{label}</Text>
+      <Text style={[TYPE.label12, { color: isActive ? THERMAL_COLORS.void : INK.muted }]}>{label}</Text>
     </Touchable>
   );
 }
@@ -221,12 +272,16 @@ export function DashedDivider({ thickness = 2, color = 'rgba(255,255,255,0.12)',
   );
 }
 
+const LIVE_BOX = 13;
+const LIVE_DOT = 7;
+
 const styles = StyleSheet.create({
   chip: {
+    height: SIZE.chip,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 2,
+    borderWidth: SIZE.stroke,
   },
   tag: {
     paddingHorizontal: 6,
@@ -238,4 +293,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  liveBox: {
+    width: LIVE_BOX,
+    height: LIVE_BOX,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: STATUS_COLORS.live.stroke,
+  },
 });
+

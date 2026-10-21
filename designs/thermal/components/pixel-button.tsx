@@ -5,10 +5,10 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { PRESS_SINK, usePressFeedback } from '../hooks/use-press-feedback';
 
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { SIZE, THERMAL_COLORS, TYPE } from '../theme';
 import { HardShadow } from './panel';
 
-export type PixelButtonVariant = 'gold' | 'outline' | 'outlineGold' | 'cream' | 'muted' | 'void' | 'paper';
+export type PixelButtonVariant = 'gold' | 'outline' | 'outlineGold' | 'outlineRed' | 'cream' | 'muted' | 'void' | 'paper';
 
 interface PixelButtonProps {
   label: string;
@@ -16,6 +16,9 @@ interface PixelButtonProps {
   variant?: PixelButtonVariant;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** `small` matches chip height (27pt) for inline actions like "+ NEW" */
+  size?: 'regular' | 'small';
+  /** Overrides the fixed V2 height (44pt) with vertical padding */
   paddingVertical?: number;
 }
 
@@ -29,7 +32,8 @@ export function PixelButton({
   variant = 'gold',
   disabled = false,
   style,
-  paddingVertical = SPACE.button,
+  size = 'regular',
+  paddingVertical,
 }: PixelButtonProps) {
   const config = VARIANTS[variant];
   const { pressed, pressHandlers } = usePressFeedback();
@@ -62,7 +66,9 @@ export function PixelButton({
         style={[
           styles.body,
           {
-            paddingVertical: Math.max(0, paddingVertical - borderWidth),
+            ...(paddingVertical === undefined
+              ? { height: size === 'small' ? SIZE.chip : SIZE.button }
+              : { paddingVertical: Math.max(0, paddingVertical - borderWidth) }),
             backgroundColor: config.background,
             borderColor: config.border ?? 'transparent',
             borderWidth,
@@ -70,7 +76,7 @@ export function PixelButton({
           animatedStyle,
         ]}
       >
-        <Text style={[TYPE.label12, { color: config.text }]} numberOfLines={1}>
+        <Text style={[TYPE.label14, { color: config.text }]} numberOfLines={1}>
           {label}
         </Text>
       </Animated.View>
@@ -100,6 +106,7 @@ const VARIANTS: Record<PixelButtonVariant, VariantConfig> = {
   gold: { background: THERMAL_COLORS.gold, text: THERMAL_COLORS.void, shadow: '#000000' },
   outline: { background: 'transparent', text: THERMAL_COLORS.white, border: 'rgba(255,255,255,0.6)', borderWidth: 2 },
   outlineGold: { background: 'transparent', text: THERMAL_COLORS.gold, border: THERMAL_COLORS.gold, borderWidth: 2 },
+  outlineRed: { background: 'transparent', text: THERMAL_COLORS.red, border: 'rgba(255,45,45,0.6)', borderWidth: 2 },
   cream: { background: THERMAL_COLORS.cream, text: THERMAL_COLORS.void, shadow: THERMAL_COLORS.orange },
   muted: { background: 'transparent', text: 'rgba(255,255,255,0.35)', border: THERMAL_COLORS.borderSoft, borderWidth: 2 },
   void: { background: THERMAL_COLORS.void, text: THERMAL_COLORS.cream, shadow: THERMAL_COLORS.red },
@@ -113,6 +120,6 @@ const styles = StyleSheet.create({
   body: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
 });

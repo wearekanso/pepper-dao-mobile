@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
+import { TIMING } from '../motion';
 import { PixelArt } from './pixel-art';
 
 interface CornerBracketsProps {
@@ -26,7 +26,7 @@ export function CornerBrackets({ size = 16, inset = 0, focusKey = 0 }: CornerBra
 
   useEffect(() => {
     spread.value = 10;
-    spread.value = withTiming(0, { duration: 320, easing: Easing.out(Easing.cubic) });
+    spread.value = withTiming(0, TIMING.reveal);
   }, [focusKey, spread]);
 
   const topLeft = useAnimatedStyle(() => ({ transform: [{ translateX: -spread.value }, { translateY: -spread.value }] }));

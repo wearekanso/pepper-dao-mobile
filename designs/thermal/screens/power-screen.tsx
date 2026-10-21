@@ -1,8 +1,10 @@
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -11,54 +13,59 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useUser } from '@/contexts/user-context';
+import { useWallet } from '@/contexts/wallet-context';
 import { useActivities } from '@/hooks/use-activities';
 import { RANK_IMAGES } from '@/lib/rank-images';
-import { getEventTitle } from '@/lib/reputation';
+import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS, REPUTATION_POINTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
 
-import { BlinkDot, DashedDivider, Touchable } from '../components/atoms';
+import { BlinkDot, DashedDivider } from '../components/atoms';
 import { CornerBrackets } from '../components/corner-brackets';
 import { HowToEarnSheet } from '../components/how-to-earn-sheet';
 import { Panel } from '../components/panel';
 import { HeatPepper, PixelArt } from '../components/pixel-art';
 import { getHeatBarColors, PixelBar } from '../components/pixel-bar';
 import { PixelButton } from '../components/pixel-button';
-import { PIXEL_CORE_VARIANTS, PixelCore, type PixelCoreVariant } from '../components/pixel-core';
+import { PixelCore, type PixelCoreVariant } from '../components/pixel-core';
 import { useRankUp } from '../components/rank-up-overlay';
 import { StakeSheet } from '../components/stake-sheet';
-import { getHeatHotspot, sampleHeatColor } from '../components/thermal-background';
+import { BACKDROP_PARALLAX, getHeatHotspot, sampleHeatColor } from '../components/thermal-background';
+import { TabHeader } from '../components/tab-header';
 import { ThermalScreen } from '../components/thermal-screen';
 import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
+import { createDemoActivities, createDemoProfile, isDemoPower } from '../lib/demo-power';
 import { useFocusKey } from '../hooks/use-focus-key';
 import { formatDayMonth, formatInteger } from '../lib/format';
-import {
-  formatShu,
-  getHeatProgress,
-  getRankLabel,
-  getRetentionTier,
-  HEAT_LEVELS,
-  MAX_HEAT_LEVEL,
-  RETENTION_TIERS,
-} from '../lib/heat-levels';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { formatShu, getHeatLevel, getHeatProgress, getRankLabel, HEAT_LEVELS, MAX_HEAT_LEVEL } from '../lib/heat-levels';
+import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * POWER — your heat signature: the camera locks onto your rank art, the
  * thermal scale shows where you sit, and the heat log lists what earned it.
  */
 export function PowerScreen() {
-  const { profile, isLoading } = useUser();
+  const user = useUser();
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const [isHowToOpen, setIsHowToOpen] = useState(false);
-  const [coreVariant, setCoreVariant] = useState<PixelCoreVariant>('flip');
+  const wallet = useWallet();
+  const { connect } = wallet;
+  // Dev-only: pepperdao://power?demo=1 shows the connected screen with a fake profile
+  const isDemo = isDemoPower(useLocalSearchParams<{ demo?: string }>().demo);
+  const demoProfile = useMemo(() => (isDemo ? createDemoProfile() : null), [isDemo]);
+  const profile = demoProfile ?? user.profile;
+  const isLoading = isDemo ? false : user.isLoading;
+  const isConnected = isDemo || wallet.isConnected;
+  const scrollY = useSharedValue(0);
 
   return (
-    <ThermalScreen preset="power">
+    <ThermalScreen preset="power" scrollY={scrollY}>
+      <TabHeader title="POWER" subtitle="YOUR HEAT, STREAK & LEVEL" accessory={<WalletChip demo={isDemo} />} />
+
       {isLoading && !profile ? (
         <View style={styles.center}>
           <ActivityIndicator color={THERMAL_COLORS.gold} />
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>CALIBRATING SENSOR…</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>CALIBRATING SENSOR…</Text>
         </View>
       ) : null}
 
@@ -72,49 +79,37 @@ export function PowerScreen() {
 
       {profile ? (
         <>
-          <CoreVariantTabs value={coreVariant} onChange={setCoreVariant} />
-          <HeatCamera profile={profile} variant={coreVariant} />
-          <RetentionPanel profile={profile} />
-          <Animated.View style={[styles.row, { gap: 12 }]}>
-            <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
-            <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
-          </Animated.View>
-          <HeatLog profile={profile} />
+          <HeatCamera profile={profile} variant={CORE_VARIANT} isGuest={!isConnected} scrollY={scrollY} />
+          {isConnected ? (
+            <>
+              <StreakPanel profile={profile} />
+              <NextLevelPanel profile={profile} />
+              <Animated.View style={[styles.row, { gap: 12 }]}>
+                <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
+                <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
+              </Animated.View>
+              <HeatLog profile={profile} isDemo={isDemo} />
+            </>
+          ) : (
+            <GuestPanel onConnect={() => void connect()} />
+          )}
         </>
       ) : null}
 
-      <StakeSheet visible={isStakeOpen} onClose={() => setIsStakeOpen(false)} />
+      <StakeSheet visible={isStakeOpen} demo={isDemo} onClose={() => setIsStakeOpen(false)} />
       {profile ? <HowToEarnSheet visible={isHowToOpen} profile={profile} onClose={() => setIsHowToOpen(false)} /> : null}
     </ThermalScreen>
   );
 }
 
-/** Temporary picker to compare background animations — remove once one is chosen */
-function CoreVariantTabs({ value, onChange }: { value: PixelCoreVariant; onChange: (variant: PixelCoreVariant) => void }) {
-  return (
-    <View style={[styles.row, { gap: 8, flexWrap: 'wrap' }]}>
-      {PIXEL_CORE_VARIANTS.map((option) => {
-        const isActive = option.value === value;
-        return (
-          <Touchable
-            key={option.value}
-            hitSlop={8}
-            onPress={() => onChange(option.value)}
-            style={[styles.variantTab, isActive && styles.variantTabActive]}
-          >
-            <View pointerEvents="none">
-              <Text style={[TYPE.label10, { color: isActive ? THERMAL_COLORS.void : 'rgba(255,255,255,0.7)' }]}>
-                {option.label}
-              </Text>
-            </View>
-          </Touchable>
-        );
-      })}
-    </View>
-  );
+interface HeatCameraProps {
+  profile: Profile;
+  variant: PixelCoreVariant;
+  isGuest: boolean;
+  scrollY: SharedValue<number>;
 }
 
-function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCoreVariant }) {
+function HeatCamera({ profile, variant, isGuest, scrollY }: HeatCameraProps) {
   const { width } = useWindowDimensions();
   const focusKey = useFocusKey();
   const { preview } = useRankUp();
@@ -129,6 +124,12 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
   const isFlip = variant === 'flip';
   // Stage x matches the screen; stage y is offset by where the stage sits
   const sampleColor = useCallback((x: number, y: number) => sampleHeatColor('power', width, x, y + stageY), [width, stageY]);
+  // The mascot sits on the backdrop's white-hot core, which lives in screen space
+  const artCenterY = hotspot.y - stageY;
+  // The wave belongs to the backdrop: undo part of the scroll so it drifts with the glow's parallax
+  const waveStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: scrollY.value * (1 - BACKDROP_PARALLAX) }],
+  }));
 
   return (
     <View
@@ -136,7 +137,7 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
       style={{ height: STAGE_HEIGHT }}
       onLayout={() => stageRef.current?.measureInWindow((_x, y) => setStageY(y))}
     >
-      <View style={[StyleSheet.absoluteFill, { left: -16, right: -16 }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { left: -16, right: -16 }, waveStyle]}>
         <PixelCore
           width={width}
           height={STAGE_HEIGHT}
@@ -147,7 +148,7 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
           intensity={(heat.current.level - 1) / (MAX_HEAT_LEVEL - 1)}
           variant={variant}
         />
-      </View>
+      </Animated.View>
 
       {/* Same hero pattern as Pulse: status row above, viewfinder below */}
       <Animated.View style={styles.stageHud}>
@@ -155,30 +156,36 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
           <BlinkDot />
           <Text style={TYPE.meta18}>REC · PEPPER-CAM 02</Text>
         </View>
-        <WalletChip />
       </Animated.View>
 
       <View style={styles.viewfinder} pointerEvents="none">
         <CornerBrackets size={16} focusKey={focusKey} />
       </View>
 
-      <FloatingArt profile={profile} centerX={centerX} />
-      <Crosshair centerX={centerX} />
+      {/* Mounted once the stage is measured, so the mascot fades in already on the core */}
+      {stageY > 0 ? (
+        <>
+          <FloatingArt profile={profile} centerX={centerX} centerY={artCenterY} />
+          <Crosshair centerX={centerX} centerY={artCenterY} />
+        </>
+      ) : null}
       <ThermalScale levelIndex={heat.current.level - 1} />
-      <YouCallout shu={heat.shu} centerX={centerX} />
+      <YouCallout shu={heat.shu} levelIndex={heat.current.level - 1} artCenterY={stageY > 0 ? artCenterY : ART_CENTER_Y} />
 
       <View style={styles.readout}>
-        <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>YOUR HEAT · SCOVILLE READING</Text>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT · SCOVILLE READING</Text>
         <Pressable onLongPress={preview} delayLongPress={600}>
           <View style={[styles.row, { alignItems: 'flex-end', gap: 8 }]}>
             <Text style={[TYPE.display72, styles.dropShadow]}>{formatInteger(animatedShu)}</Text>
-            <Text style={[TYPE.label15, styles.dropShadowSmall, { marginBottom: 8 }]}>SHU</Text>
+            <Text style={[TYPE.label14, styles.dropShadowSmall, { marginBottom: 8 }]}>SHU</Text>
           </View>
         </Pressable>
         <View style={[styles.row, { gap: 8 }]}>
           <HeatPepper level={heat.current} width={18} />
-          <Text style={[TYPE.meta20, { color: THERMAL_COLORS.gold }]}>
-            {`${heat.current.name} · ${getRankLabel(profile.rank)} · HEAT ${heat.current.level}/${MAX_HEAT_LEVEL}`}
+          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>
+            {isGuest
+              ? `${heat.current.name} · GUEST`
+              : `${heat.current.name} · ${getRankLabel(profile.rank)} · HEAT ${heat.current.level}/${MAX_HEAT_LEVEL}`}
           </Text>
         </View>
       </View>
@@ -186,7 +193,7 @@ function HeatCamera({ profile, variant }: { profile: Profile; variant: PixelCore
   );
 }
 
-function FloatingArt({ profile, centerX }: { profile: Profile; centerX: number }) {
+function FloatingArt({ profile, centerX, centerY }: { profile: Profile; centerX: number; centerY: number }) {
   const enter = useSharedValue(0);
 
   useEffect(() => {
@@ -196,13 +203,13 @@ function FloatingArt({ profile, centerX }: { profile: Profile; centerX: number }
   const animatedStyle = useAnimatedStyle(() => ({ opacity: enter.value }));
 
   return (
-    <Animated.View style={[styles.art, { left: centerX - ART_SIZE / 2 }, animatedStyle]}>
+    <Animated.View style={[styles.art, { left: centerX - ART_SIZE / 2, top: centerY - ART_SIZE / 2 }, animatedStyle]}>
       <Image source={RANK_IMAGES[profile.rank] as number} style={{ width: ART_SIZE, height: ART_SIZE, opacity: 0.95 }} contentFit="contain" />
     </Animated.View>
   );
 }
 
-function Crosshair({ centerX }: { centerX: number }) {
+function Crosshair({ centerX, centerY }: { centerX: number; centerY: number }) {
   const spin = useSharedValue(0);
 
   // Slow opacity pulse only — no rotation or scaling
@@ -213,28 +220,39 @@ function Crosshair({ centerX }: { centerX: number }) {
   const animatedStyle = useAnimatedStyle(() => ({ opacity: 0.5 + spin.value * 0.4 }));
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.crosshair, { left: centerX - 14 }, animatedStyle]}>
+    <Animated.View pointerEvents="none" style={[styles.crosshair, { left: centerX - 14, top: centerY - 14 }, animatedStyle]}>
       <PixelArt name="crosshair" />
     </Animated.View>
   );
 }
 
-function YouCallout({ shu, centerX }: { shu: number; centerX: number }) {
+/**
+ * "YOU" tag pinned to your row on the thermal scale (Figma: callout sits on
+ * the current level's line and replaces its label). The pixel leader points
+ * back toward the camera art: it steps down to the tag when the tag is below
+ * the art (as in Figma) and up to it when the tag is above.
+ */
+function YouCallout({ shu, levelIndex, artCenterY }: { shu: number; levelIndex: number; artCenterY: number }) {
+  const level = LEVEL_LIST[levelIndex];
+  const top = levelLabelTop(levelIndex) - CALLOUT_OFFSET;
+  const isBelowArt = top + CALLOUT_HEIGHT / 2 > artCenterY;
+
   return (
-    <View
-     
-      pointerEvents="none"
-      style={[styles.callout, { left: centerX + 39 }]}
-    >
-      <View style={{ marginTop: 30 }}>
+    <View pointerEvents="none" style={[styles.callout, { top, right: CALLOUT_RIGHT }]}>
+      <View style={isBelowArt ? styles.leaderDown : styles.leaderUp}>
         <PixelArt name="leader" />
       </View>
       <View style={styles.calloutBox}>
-        <Text style={[TYPE.label10, { color: THERMAL_COLORS.void }]}>YOU</Text>
+        <Text style={[TYPE.label12, { color: THERMAL_COLORS.void }]}>{`YOU · ${level.name} ${formatShu(level.shu)}`}</Text>
         <Text style={[TYPE.meta18, { color: THERMAL_COLORS.void }]}>{`${formatInteger(shu)} SHU`}</Text>
       </View>
     </View>
   );
+}
+
+/** Stage y of a level's scale label (Figma: BELL 412 … REAPER 52) */
+function levelLabelTop(levelIndex: number): number {
+  return SCALE_BOTTOM_LABEL_TOP - levelIndex * LEVEL_STEP;
 }
 
 /** Right-hand thermal scale: cells fill bottom-up, then the marker slides to your level */
@@ -250,18 +268,16 @@ function ThermalScale({ levelIndex }: { levelIndex: number }) {
   return (
     <View pointerEvents="none" style={styles.scale}>
       <View style={styles.scaleLabels}>
-        {LEVEL_LIST.map((level, index) => (
-          <Text
-            key={level.rank}
-            style={[
-              TYPE.meta16,
-              styles.scaleLabel,
-              { bottom: index * LEVEL_STEP - 2, color: index === levelIndex ? THERMAL_COLORS.white : 'rgba(255,255,255,0.55)' },
-            ]}
-          >
-            {`${level.name} ${formatShu(level.shu)}`}
-          </Text>
-        ))}
+        {LEVEL_LIST.map((level, index) =>
+          index === levelIndex ? null : (
+            <Text
+              key={level.rank}
+              style={[TYPE.meta18, styles.scaleLabel, { bottom: index * LEVEL_STEP - 4, color: SCALE_LABEL_INK }]}
+            >
+              {`${level.name} ${formatShu(level.shu)}`}
+            </Text>
+          ),
+        )}
       </View>
       <View style={{ gap: 2 }}>
         {SCALE_COLORS.map((color, index) => (
@@ -285,12 +301,37 @@ function ScaleCell({ color, delay }: { color: string; delay: number }) {
   return <Animated.View style={[{ width: 12, height: 7, backgroundColor: color }, animatedStyle]} />;
 }
 
-function RetentionPanel({ profile }: { profile: Profile }) {
-  const heat = getHeatProgress(profile);
+/** No wallet yet: what linking unlocks, and the first two REP sources */
+function GuestPanel({ onConnect }: { onConnect: () => void }) {
+  return (
+    <Panel index={1}>
+      <Text style={[TYPE.label12, { color: INK.muted }]}>NO HEAT SIGNATURE YET</Text>
+      <Text style={TYPE.body14}>Link a wallet to start building heat. Every vote, stake and proposal earns REP.</Text>
+      <View style={styles.guestList}>
+        {GUEST_STEPS.map((step, index) => (
+          <View key={step.title}>
+            {index > 0 ? <DashedDivider /> : null}
+            <View style={[styles.row, styles.guestRow]}>
+              <View style={styles.guestChip}>
+                <Text style={TYPE.display24}>{`+${step.points}`}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={TYPE.label12}>{step.title}</Text>
+                <Text style={[TYPE.meta18, { color: INK.muted }]}>{step.hint}</Text>
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+      <PixelButton label="CONNECT WALLET >" variant="gold" onPress={onConnect} />
+    </Panel>
+  );
+}
+
+function StreakPanel({ profile }: { profile: Profile }) {
   const weeks = profile.current_streak_weeks;
-  const tier = getRetentionTier(weeks);
-  const tierIndex = RETENTION_TIERS.indexOf(tier);
-  const repProgress = heat.targetPoints === null ? 1 : heat.targetPoints > 0 ? profile.reputation_points / heat.targetPoints : 0;
+  const next = getNextStreakMilestone(weeks);
+  const daysLeft = getStreakDaysLeft(profile.last_activity_at);
 
   return (
     <Panel index={1}>
@@ -298,49 +339,110 @@ function RetentionPanel({ profile }: { profile: Profile }) {
         <View style={[styles.row, { gap: 10 }]}>
           <FlickerFlame />
           <View>
-            <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>HEAT RETENTION</Text>
+            <Text style={[TYPE.label12, { color: INK.muted }]}>VOTING STREAK</Text>
             <Text style={TYPE.display32}>{weeks === 1 ? '1 WEEK' : `${weeks} WEEKS`}</Text>
           </View>
         </View>
         <WeeklyHeat weeks={weeks} />
       </View>
 
-      <View style={[styles.row, { gap: 4 }]}>
-        {RETENTION_TIERS.map((item, index) => {
-          const isActive = index === tierIndex;
-          const isPast = index < tierIndex;
-          return (
-            <View
-              key={item}
-              style={[
-                styles.tier,
-                { backgroundColor: isActive ? THERMAL_COLORS.orange : isPast ? THERMAL_COLORS.ghost : 'rgba(255,255,255,0.05)' },
-              ]}
-            >
-              <Text
-                style={[
-                  TYPE.label10,
-                  { color: isActive ? THERMAL_COLORS.void : isPast ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.35)' },
-                ]}
-              >
-                {item}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      <DashedDivider />
 
+      {next ? (
+        <View style={styles.between}>
+          <Text style={TYPE.meta18}>{`NEXT BONUS · ${next.weeks} WEEKS`}</Text>
+          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{`+${next.points} REP`}</Text>
+        </View>
+      ) : null}
+      <Text style={[TYPE.meta18, { color: INK.muted }]}>
+        {weeks === 0 || daysLeft === null
+          ? 'Vote on any proposal to start your streak.'
+          : `Vote on any proposal within ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} to keep your streak.`}
+      </Text>
+    </Panel>
+  );
+}
+
+function NextLevelPanel({ profile }: { profile: Profile }) {
+  const heat = getHeatProgress(profile);
+  const repProgress = heat.targetPoints === null ? 1 : heat.targetPoints > 0 ? profile.reputation_points / heat.targetPoints : 0;
+  const requirements = heat.next ? getRequirements(profile, heat.next.rank) : [];
+
+  return (
+    <Panel index={2}>
       <View style={styles.between}>
-        <Text style={TYPE.meta16}>
-          {heat.next ? `TARGET: ${heat.next.name} ${formatShu(heat.next.shu)} SHU` : 'MAX HEAT REACHED'}
-        </Text>
-        <Text style={[TYPE.meta16, { color: THERMAL_COLORS.gold }]}>
-          {heat.targetPoints ? `${profile.reputation_points}/${heat.targetPoints} REP` : `${profile.reputation_points} REP`}
+        <View style={{ flexShrink: 1 }}>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>NEXT LEVEL</Text>
+          <Text style={TYPE.meta18} numberOfLines={1}>
+            {heat.next ? `${heat.next.name} · ${getRankLabel(heat.next.rank)}` : 'MAX HEAT REACHED'}
+          </Text>
+        </View>
+        <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>
+          {heat.targetPoints ? `${profile.reputation_points} / ${heat.targetPoints} REP` : `${profile.reputation_points} REP`}
         </Text>
       </View>
       <PixelBar colors={getHeatBarColors(repProgress)} height={8} delay={400} />
+      {requirements.map((item) => (
+        <View key={item.label} style={styles.between}>
+          <View style={[styles.row, { gap: 8, flexShrink: 1 }]}>
+            <View style={[styles.checkBox, { borderColor: item.isDone ? STATUS_COLORS.positive.stroke : THERMAL_COLORS.border }]}>
+              {item.isDone ? <View style={styles.checkFill} /> : null}
+            </View>
+            <Text style={[TYPE.meta18, { color: item.isDone ? INK_DONE : THERMAL_COLORS.white, flexShrink: 1 }]}>
+              {item.label}
+            </Text>
+          </View>
+          <Text style={[TYPE.meta18, { color: item.isDone ? STATUS_COLORS.positive.text : INK.muted }]}>
+            {item.isDone ? 'DONE' : item.remaining}
+          </Text>
+        </View>
+      ))}
     </Panel>
   );
+}
+
+interface Requirement {
+  label: string;
+  isDone: boolean;
+  /** Right-hand text while not done, e.g. "10 TO GO" */
+  remaining: string;
+}
+
+/** What the next rank asks for, in the order a player usually meets it */
+function getRequirements(profile: Profile, rank: Profile['rank']): Array<Requirement> {
+  const rule = RANK_REQUIREMENTS[rank];
+  const items: Array<Requirement> = [];
+
+  if (rule.requiresWallet) {
+    items.push({ label: 'Link your wallet', isDone: Boolean(profile.wallet_address), remaining: 'TO DO' });
+  }
+  if (rule.requiresVote) {
+    items.push({ label: 'Vote on 1 proposal', isDone: profile.has_voted, remaining: 'TO DO' });
+  }
+  if (rule.requiresStreak > 0) {
+    const left = rule.requiresStreak - profile.current_streak_weeks;
+    items.push({ label: `Keep a ${rule.requiresStreak}-week streak`, isDone: left <= 0, remaining: `${left}W TO GO` });
+  }
+  if (rule.requiresEngagedProposal) {
+    items.push({ label: 'Create a proposal that heats up', isDone: profile.has_engaged_proposal, remaining: 'TO DO' });
+  }
+  if (rule.requiresPassedProposal) {
+    items.push({ label: 'Get a proposal passed', isDone: profile.has_passed_proposal, remaining: 'TO DO' });
+  }
+  if (rule.points > 0) {
+    const left = rule.points - profile.reputation_points;
+    items.push({ label: `Earn ${rule.points} REP`, isDone: left <= 0, remaining: `${left} TO GO` });
+  }
+  return items;
+}
+
+/** Whole days left in the 7-day window that keeps the weekly streak alive */
+function getStreakDaysLeft(lastActivityAt: string | null): number | null {
+  if (!lastActivityAt) return null;
+  const last = Date.parse(lastActivityAt);
+  if (!Number.isFinite(last)) return null;
+  const left = Math.ceil((last + STREAK_WINDOW_MS - Date.now()) / DAY_MS);
+  return left > 0 ? left : null;
 }
 
 function FlickerFlame() {
@@ -391,14 +493,17 @@ function WeeklyHeat({ weeks }: { weeks: number }) {
   );
 }
 
-function HeatLog({ profile }: { profile: Profile }) {
-  const { records: activities, isLoading } = useActivities({ profileId: profile.id, limit: 12 });
+function HeatLog({ profile, isDemo }: { profile: Profile; isDemo: boolean }) {
+  const feed = useActivities({ profileId: isDemo ? undefined : profile.id, limit: 12 });
+  const demoActivities = useMemo(() => (isDemo ? createDemoActivities() : null), [isDemo]);
+  const activities = demoActivities ?? feed.records;
+  const isLoading = isDemo ? false : feed.isLoading;
 
   return (
     <Panel index={4} padding={0} gap={0}>
       <View style={[styles.between, styles.logRow]}>
-        <Text style={TYPE.label10}>HEAT LOG</Text>
-        <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>{`${profile.reputation_points} REP TOTAL`}</Text>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>HEAT LOG</Text>
+        <Text style={[TYPE.meta18, { color: INK.muted }]}>{`${profile.reputation_points} REP TOTAL`}</Text>
       </View>
       {isLoading && activities.length === 0 ? (
         <View style={styles.logRow}>
@@ -409,7 +514,7 @@ function HeatLog({ profile }: { profile: Profile }) {
         <>
           <DashedDivider />
           <View style={styles.logRow}>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>No heat yet — vote on a proposal to spark it.</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>No heat yet — vote on a proposal to spark it.</Text>
           </View>
         </>
       ) : null}
@@ -418,10 +523,10 @@ function HeatLog({ profile }: { profile: Profile }) {
           <DashedDivider />
           <View style={[styles.row, styles.logRow, { gap: 12 }]}>
             <Text style={[TYPE.display24, { width: 40, color: getLogColor(activity) }]}>{getLogPoints(activity)}</Text>
-            <Text style={[TYPE.meta18, { flex: 1, color: 'rgba(255,255,255,0.85)' }]} numberOfLines={1}>
+            <Text style={[TYPE.meta18, { flex: 1 }]} numberOfLines={1}>
               {getLogTitle(activity)}
             </Text>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.4)' }]}>{formatDayMonth(activity.created_at)}</Text>
+            <Text style={[TYPE.meta18, { color: INK.faint }]}>{formatDayMonth(activity.created_at)}</Text>
           </View>
         </Animated.View>
       ))}
@@ -430,7 +535,7 @@ function HeatLog({ profile }: { profile: Profile }) {
 }
 
 function getLogPoints(activity: Activity): string {
-  if (activity.event_type === 'RANK_UP') return 'UP';
+  if (activity.event_type === 'RANK_UP') return 'LVL';
   if (activity.points === 0) return '·';
   return activity.points > 0 ? `+${activity.points}` : `${activity.points}`;
 }
@@ -438,21 +543,24 @@ function getLogPoints(activity: Activity): string {
 function getLogColor(activity: Activity): string {
   if (activity.event_type === 'RANK_UP') return THERMAL_COLORS.gold;
   if (activity.event_type === 'STREAK_MILESTONE') return THERMAL_COLORS.orange;
-  if (activity.points < 0) return THERMAL_COLORS.blue;
+  if (activity.points < 0) return STATUS_COLORS.negative.text;
   return THERMAL_COLORS.cream;
 }
 
 function getLogTitle(activity: Activity): string {
   switch (activity.event_type) {
     case 'RANK_UP':
-      return activity.rank_after ? `RANK UP > ${getRankLabel(activity.rank_after)}` : 'RANK UP';
+      return activity.rank_after ? `LEVEL UP · ${getHeatLevel(activity.rank_after).name}` : 'LEVEL UP';
     case 'STREAK_MILESTONE': {
       const weeks = (activity.metadata as { weeks?: number })?.weeks ?? 0;
       return `STREAK BONUS · ${weeks} WEEKS`;
     }
     case 'VOTE':
-    case 'FIRST_VOTE':
-      return activity.proposal_id !== null ? `VOTED · #${activity.proposal_id}` : 'VOTED';
+    case 'FIRST_VOTE': {
+      const label = activity.event_type === 'FIRST_VOTE' ? 'FIRST VOTE' : 'VOTED';
+      // Only community proposals are voted on
+      return activity.proposal_id !== null ? `${label} · COMMUNITY #${activity.proposal_id}` : label;
+    }
     case 'WALLET_CONNECTED':
       return 'WALLET LINKED';
     default:
@@ -460,11 +568,36 @@ function getLogTitle(activity: Activity): string {
   }
 }
 
+/** Background animation for the heat camera: 09 FLIP (the approved one) */
+const CORE_VARIANT: PixelCoreVariant = 'flip';
+
+/** Done checklist items fade back (Figma: 50% white) */
+const INK_DONE = 'rgba(255,255,255,0.5)';
+
+const GUEST_STEPS = [
+  { title: 'LINK WALLET', hint: `Unlocks MEMBER · ${HEAT_LEVELS.MEMBER.name}`, points: REPUTATION_POINTS.WALLET_CONNECTED },
+  { title: 'FIRST VOTE', hint: 'Any live proposal', points: REPUTATION_POINTS.FIRST_VOTE },
+];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STREAK_WINDOW_MS = 7 * DAY_MS;
+
 const STAGE_HEIGHT = 508;
 const ART_SIZE = 110;
 const ART_CENTER_Y = 273;
 const LEVEL_STEP = 72;
 const VIEWFINDER_TOP = 44;
+/** Figma: BELL label top in the stage; each level above is LEVEL_STEP higher */
+const SCALE_BOTTOM_LABEL_TOP = 412;
+/** Callout box top sits 10pt above its level label; box is ~42pt tall */
+const CALLOUT_OFFSET = 10;
+const CALLOUT_HEIGHT = 42;
+/** Tag hugs the thermal scale: its right edge stops 8pt before the scale cells */
+const CALLOUT_RIGHT = 24;
+/** Rising leader (tag above the art) sits lower so it meets the box's lower edge */
+const LEADER_UP_TOP = 18;
+/** Scale level labels (Figma: 55% white) */
+const SCALE_LABEL_INK = 'rgba(255,255,255,0.55)';
 
 const LEVEL_LIST = Object.values(HEAT_LEVELS);
 
@@ -490,15 +623,34 @@ const WEEK_COLORS = [
 
 
 const styles = StyleSheet.create({
-  variantTab: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
+  guestList: {
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.border,
   },
-  variantTabActive: {
-    backgroundColor: THERMAL_COLORS.gold,
-    borderColor: THERMAL_COLORS.gold,
+  guestRow: {
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  guestChip: {
+    width: 52,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.cream,
+  },
+  checkBox: {
+    width: 14,
+    height: 14,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkFill: {
+    width: 6,
+    height: 6,
+    backgroundColor: STATUS_COLORS.positive.stroke,
   },
   row: {
     flexDirection: 'row',
@@ -526,18 +678,22 @@ const styles = StyleSheet.create({
   },
   art: {
     position: 'absolute',
-    top: ART_CENTER_Y - ART_SIZE / 2,
   },
   crosshair: {
     position: 'absolute',
-    top: ART_CENTER_Y - 14,
   },
-  // Sits in the gap between the GHOST and HABANERO scale labels
   callout: {
     position: 'absolute',
-    top: ART_CENTER_Y - 124,
     flexDirection: 'row',
     alignItems: 'flex-start',
+  },
+  // The pixel leader art rises left→right; mirrored, it steps down into the tag
+  leaderDown: {
+    marginTop: -4,
+    transform: [{ scaleY: -1 }],
+  },
+  leaderUp: {
+    marginTop: LEADER_UP_TOP,
   },
   calloutBox: {
     backgroundColor: THERMAL_COLORS.cream,
@@ -596,11 +752,6 @@ const styles = StyleSheet.create({
     textShadowColor: '#000000',
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 0.1,
-  },
-  tier: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 4,
   },
   logRow: {
     paddingHorizontal: SPACE.rowX,

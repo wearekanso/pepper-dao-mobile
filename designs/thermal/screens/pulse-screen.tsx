@@ -1,33 +1,39 @@
+import { useNetInfo } from '@react-native-community/netinfo';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 
+import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
 import { useUser } from '@/contexts/user-context';
+import { useWallet } from '@/contexts/wallet-context';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import { usePepperTokenMetrics } from '@/hooks/use-pepper-token-metrics';
 import { calculateBurnedFromOriginalSupply, formatPepperAmount } from '@/lib/pepper-metrics';
+import { REPUTATION_POINTS } from '@/lib/reputation';
 import { telemetry } from '@/lib/telemetry';
 
-import { BlinkDot, ChevronLink, StatusLabel } from '../components/atoms';
+import { ChevronLink, LiveMarker, SectionLabel } from '../components/atoms';
 import { CornerBrackets } from '../components/corner-brackets';
 import { InfoSheet } from '../components/info-sheet';
+import { NoticeBanner } from '../components/state-cards';
 import { Panel } from '../components/panel';
 import { PixelArt } from '../components/pixel-art';
 import { PixelButton } from '../components/pixel-button';
-import { LiveProposalPanel } from '../components/proposal-panels';
+import { LiveVoteCard } from '../components/proposal-panels';
 import { ThermalScreen } from '../components/thermal-screen';
 import { TreasurySheet } from '../components/treasury-sheet';
+import { TabHeader } from '../components/tab-header';
 import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
 import { useFocusKey } from '../hooks/use-focus-key';
-import { DEMO_PROPOSAL_ID, DEMO_VOTE_ENABLED } from '../lib/demo-vote';
+import { createDemoProfile, DEMO_WRONG_CHAIN_ID, isDemoWrongNetwork } from '../lib/demo-power';
+import { createDemoProposal, DEMO_PROPOSAL_ID, DEMO_VOTE_ENABLED } from '../lib/demo-vote';
 import { formatCompact, formatInteger, tokenToNumber } from '../lib/format';
 import { getHeatProgress } from '../lib/heat-levels';
 import { isLiveProposal } from '../lib/proposal';
-import { THERMAL_COLORS, TYPE } from '../theme';
+import { INK, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * PULSE — the DAO's vital signs: treasury, token readouts, the live vote
@@ -37,6 +43,15 @@ export function PulseScreen() {
   const router = useRouter();
   const focusKey = useFocusKey();
   const { metrics, isFetching, refetch } = usePepperTokenMetrics();
+  const wallet = useWallet();
+  const { switchToChiliz } = wallet;
+  // Dev-only: pepperdao://?demo=wrongnetwork shows a connected wallet on another chain
+  const isDemo = isDemoWrongNetwork(useLocalSearchParams<{ demo?: string }>().demo);
+  const isWrongNetwork = isDemo || wallet.isWrongNetwork;
+  const chainName = getChainName(isDemo ? DEMO_WRONG_CHAIN_ID : wallet.chainId);
+  const netInfo = useNetInfo();
+  const isOffline = netInfo.isConnected === false;
+  const updatedAgo = metrics ? formatMinutesAgo(metrics.updatedAt) : null;
   const { data: proposals, refetch: refetchProposals } = useGovernanceProposals({});
   const [modal, setModal] = useState<ModalKey | null>(null);
 
@@ -57,21 +72,23 @@ export function PulseScreen() {
         label: 'SUPPLY',
         icon: ICON_SUPPLY,
         value: metrics ? formatCompact(tokenToNumber(metrics.totalSupply, decimals)) : '–',
-        hint: metrics ? formatPepperAmount(metrics.totalSupply, decimals) : 'loading…',
+        hint: 'total PEPPER',
+        modal: 'supply',
       },
       {
         key: 'burnt',
         label: 'BURNT',
         icon: ICON_BURN,
         value: burned !== null ? formatCompact(burned) : '–',
-        hint: 'gone forever',
+        hint: 'burned for good',
+        modal: 'burnt',
       },
       {
         key: 'staked',
         label: 'STAKED',
         icon: ICON_VAULT,
         value: metrics?.hasStakedData ? formatCompact(tokenToNumber(metrics.stakedAmount, decimals)) : '–',
-        hint: 'locked as vePEPPER',
+        hint: 'locked to vote',
         modal: 'staked',
       },
       {
@@ -79,7 +96,7 @@ export function PulseScreen() {
         label: 'CEX FUND',
         icon: ICON_CEX,
         value: metrics ? formatCompact(tokenToNumber(metrics.cexFundChzBalance, 18)) : '–',
-        hint: 'CHZ · tier-1 listing',
+        hint: 'CHZ · exchange listing',
         modal: 'cex',
       },
     ];
@@ -87,8 +104,9 @@ export function PulseScreen() {
 
   const liveProposal = useMemo(() => {
     const live = (proposals ?? []).filter(isLiveProposal);
-    return live.find((proposal) => proposal.type === 'PEP') ?? live[0] ?? null;
-  }, [proposals]);
+    const real = live.find((proposal) => proposal.type === 'PEP') ?? live[0] ?? null;
+    return real ?? (isDemo ? createDemoProposal() : null);
+  }, [proposals, isDemo]);
 
   function handleRefresh() {
     refetch();
@@ -101,79 +119,74 @@ export function PulseScreen() {
 
   return (
     <ThermalScreen preset="pulse" refreshing={isFetching && Boolean(metrics)} onRefresh={handleRefresh}>
-      <Animated.View style={styles.between}>
-        <View style={styles.row6}>
-          <BlinkDot />
-          <Text style={TYPE.meta18}>LIVE · TREASURY</Text>
-        </View>
-        <WalletChip />
-      </Animated.View>
+      <TabHeader
+        title="PULSE"
+        subtitle={isOffline && updatedAgo ? `LAST UPDATED ${updatedAgo.toUpperCase()}` : 'DAO TREASURY & TOKEN'}
+        accessory={<WalletChip demo={isDemo} />}
+      />
+
+      {isOffline ? (
+        <NoticeBanner
+          label="YOU'RE OFFLINE"
+          message={updatedAgo ? `Showing data from ${updatedAgo}` : 'Waiting for a connection'}
+          tone="muted"
+          actionLabel="RETRY"
+          onAction={handleRefresh}
+        />
+      ) : isWrongNetwork ? (
+        <NoticeBanner
+          label="WRONG NETWORK"
+          message={chainName ? `Your wallet is on ${chainName}` : 'Your wallet is on another network'}
+          tone="negative"
+          actionLabel="SWITCH TO CHILIZ"
+          onAction={() => void switchToChiliz()}
+          solidAction
+        />
+      ) : null}
 
       <Pressable onPress={() => setModal('treasury')} onLongPress={() => setModal('treasuryInfo')}>
         <View style={styles.hero}>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>DAO TREASURY · MANAGED BY VOTE</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>DAO TREASURY · MANAGED BY VOTE</Text>
           <View style={styles.heroValue}>
-            <Text style={[TYPE.display72, styles.dropShadow, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>
+            <Text style={[TYPE.display58, styles.dropShadow, { flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>
               {metrics ? formatInteger(animatedTreasury) : '––––––'}
             </Text>
-            <Text style={[TYPE.label15, styles.dropShadowSmall, { marginBottom: 8 }]}>CHZ</Text>
+            <Text style={[TYPE.label14, styles.dropShadowSmall]}>CHZ</Text>
           </View>
-          <Text style={[TYPE.meta20, { color: THERMAL_COLORS.gold }]}>{formatDelta(delta)}</Text>
+          <View style={styles.between}>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{formatDelta(delta)}</Text>
+            <ChevronLink label="ACTIVITY" onPress={() => setModal('treasury')} />
+          </View>
           <CornerBrackets size={16} focusKey={focusKey} />
         </View>
       </Pressable>
 
-      <Animated.View style={[styles.row, { gap: 12 }]}>
+      <View style={[styles.row, { gap: 12 }]}>
         <PixelButton label="GET PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => void handleGetPepper()} />
-        <PixelButton label="STAKE & VOTE" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
-      </Animated.View>
-
-      <View style={{ gap: 12 }}>
-        {[readouts.slice(0, 2), readouts.slice(2, 4)].map((pair, rowIndex) => (
-          <View key={rowIndex} style={[styles.row, { gap: 12 }]}>
-            {pair.map((readout, columnIndex) => (
-              <Panel
-                key={readout.key}
-                index={2 + rowIndex * 2 + columnIndex}
-                gap={6}
-                style={{ flex: 1 }}
-                onPress={readout.modal ? () => setModal(readout.modal!) : undefined}
-              >
-                <View style={[styles.row, { gap: 8, alignItems: 'center' }]}>
-                  <Image source={readout.icon} style={{ width: 26, height: 26 }} contentFit="contain" />
-                  <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>{readout.label}</Text>
-                </View>
-                <Text style={TYPE.display32} numberOfLines={1} adjustsFontSizeToFit>
-                  {readout.value}
-                </Text>
-                <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]} numberOfLines={1} adjustsFontSizeToFit>
-                  {readout.hint}
-                </Text>
-              </Panel>
-            ))}
-          </View>
-        ))}
+        <PixelButton label="STAKE PEPPER" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
       </View>
 
-      <View style={styles.between}>
-        <StatusLabel label="LIVE NOW" />
-        <ChevronLink label="ALL PROPOSALS" onPress={() => router.push('/governance')} />
-      </View>
+      <View style={{ gap: 8 }}>
+        <View style={styles.between}>
+          {liveProposal ? <LiveMarker /> : <SectionLabel label="LIVE VOTE" />}
+          <ChevronLink label="ALL PROPOSALS" onPress={() => router.push('/governance')} />
+        </View>
 
-      {liveProposal ? (
-        <LiveProposalPanel
-          proposal={liveProposal}
-          variant="compact"
-          index={6}
-          onOpen={() => router.push(`/governance/${liveProposal.id}`)}
-        />
-      ) : (
-        <Panel index={6}>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>NO SIGNAL</Text>
-          <Text style={TYPE.display24}>No live vote right now</Text>
-          <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>The next proposal will heat up here.</Text>
-        </Panel>
-      )}
+        {liveProposal ? (
+          <LiveVoteCard
+            proposal={liveProposal}
+            index={2}
+            demoWallet={isDemo ? { isConnected: true, isWrongNetwork: true } : undefined}
+            onOpen={() => router.push(`/governance/${liveProposal.id}`)}
+          />
+        ) : (
+          <Panel index={2}>
+            <Text style={[TYPE.label12, { color: INK.muted }]}>NO SIGNAL</Text>
+            <Text style={TYPE.display24}>No live vote right now</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>The next proposal will heat up here.</Text>
+          </Panel>
+        )}
+      </View>
 
       {DEMO_VOTE_ENABLED ? (
         <PixelButton
@@ -183,18 +196,51 @@ export function PulseScreen() {
         />
       ) : null}
 
-      <HeatShortcut index={7} onPress={() => router.push('/power')} />
+      <HeatShortcut demo={isDemo} index={3} onPress={() => router.push('/power')} />
+
+      <View style={{ gap: 10 }}>
+        <SectionLabel label="PEPPER TOKEN" />
+        <View style={{ gap: 12 }}>
+          {[readouts.slice(0, 2), readouts.slice(2, 4)].map((pair, rowIndex) => (
+            <View key={rowIndex} style={[styles.row, { gap: 12 }]}>
+              {pair.map((readout, columnIndex) => (
+                <Panel
+                  key={readout.key}
+                  index={4 + rowIndex * 2 + columnIndex}
+                  gap={6}
+                  style={{ flex: 1 }}
+                  onPress={readout.modal ? () => setModal(readout.modal!) : undefined}
+                >
+                  <View style={styles.between}>
+                    <View style={[styles.row, { gap: 8, alignItems: 'center' }]}>
+                      <Image source={readout.icon} style={{ width: 26, height: 26 }} contentFit="contain" />
+                      <Text style={[TYPE.label12, { color: INK.muted }]}>{readout.label}</Text>
+                    </View>
+                    {readout.modal ? <Chevron /> : null}
+                  </View>
+                  <Text style={TYPE.display32} numberOfLines={1} adjustsFontSizeToFit>
+                    {readout.value}
+                  </Text>
+                  <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {readout.hint}
+                  </Text>
+                </Panel>
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
 
       <Panel index={8} onPress={() => router.push('/rulebook')}>
         <View style={[styles.row, { gap: 12, alignItems: 'center' }]}>
           <PixelArt name="scroll" />
           <View style={{ flex: 1 }}>
             <Text style={TYPE.label12}>RULEBOOK</Text>
-            <Text style={[TYPE.meta16, { color: 'rgba(255,255,255,0.6)' }]}>
+            <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1}>
               {'Constitution, voting tracks & red lines'}
             </Text>
           </View>
-          <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+          <Chevron />
         </View>
       </Panel>
 
@@ -202,25 +248,46 @@ export function PulseScreen() {
       <InfoSheet
         visible={modal === 'treasuryInfo'}
         onClose={() => setModal(null)}
-        eyebrow="LIVE · TREASURY"
         title="DAO TREASURY"
+        value={metrics ? formatCompact(treasuryChz) : undefined}
+        unit="CHZ"
         message="These funds are managed by the PEPPER community through voting. Every penny spent is visible on-chain."
         address={TREASURY_ADDRESS}
       />
       <InfoSheet
+        visible={modal === 'supply'}
+        onClose={() => setModal(null)}
+        title="TOTAL SUPPLY"
+        value={readouts[0].value}
+        unit="PEPPER"
+        message="All PEPPER that exists right now. Supply started at 8,888,888,888,000,000 and only goes down as tokens are burned."
+        address={PEPPER_TOKEN_ADDRESS}
+      />
+      <InfoSheet
+        visible={modal === 'burnt'}
+        onClose={() => setModal(null)}
+        title="BURNT PEPPER"
+        value={readouts[1].value}
+        unit="PEPPER"
+        message="PEPPER removed from circulation for good: the gap between the original 8.888Q supply and what exists today. Burned tokens never come back."
+        address={PEPPER_TOKEN_ADDRESS}
+      />
+      <InfoSheet
         visible={modal === 'staked'}
         onClose={() => setModal(null)}
-        eyebrow="READOUT · STAKED"
         title="STAKED PEPPER"
+        value={readouts[2].value}
+        unit="vePEPPER"
         message="The total amount of PEPPER locked as vePEPPER. Staked PEPPER is what powers governance votes."
         address={STAKING_ADDRESS}
       />
       <InfoSheet
         visible={modal === 'cex'}
         onClose={() => setModal(null)}
-        eyebrow="READOUT · CEX FUND"
         title="CEX FUND"
-        message="The CEX Fund will be used to secure a Tier 1 Centralized Exchange listing for PEPPER. If the funds raised are insufficient after 90 days, they will be returned to the PEPPER Treasury to be managed by the community."
+        value={readouts[3].value}
+        unit="CHZ"
+        message="Raised to secure a Tier 1 centralized exchange listing for PEPPER. If it isn't enough after 90 days, the funds go back to the treasury and the community decides what to do with them."
         address={CEX_FUND_ADDRESS}
       />
     </ThermalScreen>
@@ -230,33 +297,62 @@ export function PulseScreen() {
 interface HeatShortcutProps {
   index: number;
   onPress: () => void;
+  /** Dev-only demo screens: show the demo profile as connected */
+  demo?: boolean;
 }
 
-function HeatShortcut({ index, onPress }: HeatShortcutProps) {
-  const { profile } = useUser();
-  const heat = profile ? getHeatProgress(profile) : null;
+function HeatShortcut({ index, onPress, demo = false }: HeatShortcutProps) {
+  const user = useUser();
+  const wallet = useWallet();
+  const demoProfile = useMemo(() => (demo ? createDemoProfile() : null), [demo]);
+  const profile = demoProfile ?? user.profile;
+  const isConnected = demo || wallet.isConnected;
+  const heat = profile && isConnected ? getHeatProgress(profile) : null;
   const streakWeeks = profile?.current_streak_weeks ?? 0;
 
   return (
     <Panel index={index} onPress={onPress}>
       <View style={[styles.row, { gap: 12, alignItems: 'center' }]}>
-        <PixelArt name="pepperSmall" />
+        <PixelArt name="pepperVivid" />
         <View style={{ flex: 1 }}>
-          <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>YOUR HEAT</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT</Text>
           <Text style={TYPE.meta18} numberOfLines={1}>
-            {heat ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU` : 'CONNECT TO HEAT UP'}
+            {heat ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU` : 'Start earning heat'}
           </Text>
+          {heat ? null : (
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]} numberOfLines={1}>
+              {`+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link a wallet`}
+            </Text>
+          )}
         </View>
-        {streakWeeks > 0 ? (
+        {heat && streakWeeks > 0 ? (
           <View style={[styles.row, { gap: 4, alignItems: 'center' }]}>
             <PixelArt name="flameSmall" />
-            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.orange }]}>{`${streakWeeks}W`}</Text>
+            <Text style={[TYPE.meta18, { color: THERMAL_COLORS.orange }]}>{`${streakWeeks}-WEEK STREAK`}</Text>
           </View>
         ) : null}
-        <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
+        <Chevron />
       </View>
     </Panel>
   );
+}
+
+/** Gold ">" at the right edge of a tappable card */
+function Chevron() {
+  return <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>;
+}
+
+/** Name of a common wallet chain for the wrong-network banner; null when unknown */
+function getChainName(chainId: number | string | undefined): string | null {
+  if (chainId === undefined) return null;
+  return CHAIN_NAMES[Number(chainId)] ?? null;
+}
+
+/** ISO time → "2 min ago" / "just now" */
+function formatMinutesAgo(iso: string): string {
+  const minutes = Math.floor((Date.now() - Date.parse(iso)) / 60_000);
+  if (!Number.isFinite(minutes) || minutes < 1) return 'just now';
+  return minutes < 60 ? `${minutes} min ago` : `${Math.floor(minutes / 60)} h ago`;
 }
 
 function formatDelta(delta: bigint | null): string {
@@ -266,7 +362,7 @@ function formatDelta(delta: bigint | null): string {
   return `${sign}${formatPepperAmount(absolute, 18)} CHZ TODAY`;
 }
 
-type ModalKey = 'treasury' | 'treasuryInfo' | 'staked' | 'cex';
+type ModalKey = 'treasury' | 'treasuryInfo' | 'supply' | 'burnt' | 'staked' | 'cex';
 
 interface Readout {
   key: string;
@@ -287,14 +383,19 @@ const TREASURY_ADDRESS = '0x1d70027242A82362fd2c818bb2A3a2cAaA513816';
 const STAKING_ADDRESS = '0x5cA4C88339D89B2547a001003Cca84F62F557A72';
 const CEX_FUND_ADDRESS = '0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B';
 
+/** Chains a wallet is most likely to be on instead of Chiliz */
+const CHAIN_NAMES: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'Optimism',
+  56: 'BNB Chain',
+  137: 'Polygon',
+  8453: 'Base',
+  42161: 'Arbitrum',
+};
+
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-  },
-  row6: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   between: {
     flexDirection: 'row',

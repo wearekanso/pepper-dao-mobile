@@ -11,7 +11,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
-import { THERMAL_COLORS } from '../theme';
+import { TIMING } from '../motion';
+import { SIZE, THERMAL_COLORS } from '../theme';
 
 interface HeatBurstProps {
   width: number;
@@ -132,7 +133,7 @@ function BurstRing({ index, d, color, width, height, burstKey, flow }: BurstRing
   useEffect(() => {
     const delay = (BURST_RINGS.length - index) * 55;
     scale.value = 0;
-    scale.value = withDelay(delay, withTiming(1, { duration: 520, easing: Easing.out(Easing.cubic) }));
+    scale.value = withDelay(delay, withTiming(1, TIMING.emphasis));
     // In flow mode the rings are phase-shifted evenly so one wave travels outward per period
     const period = flow ? FLOW_PULSE_MS : 1400;
     const stagger = flow ? period / BURST_RINGS.length : 90;
@@ -337,7 +338,8 @@ const SHAPE_SDFS: Record<Exclude<HeatShape, 'pulse'>, (x: number, y: number) => 
 };
 
 
-const BURST_CELL = 12;
+/** Sensor grid cell: pixel art sits on the 10pt grid (theme SIZE.pixelCell) */
+const BURST_CELL = SIZE.pixelCell;
 const FLOW_PULSE_MS = 1800;
 const FLOW_DRIFT_MS = 4200;
 const FLOW_DRIFT_PT = 28;

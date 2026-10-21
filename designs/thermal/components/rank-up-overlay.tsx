@@ -1,20 +1,25 @@
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Modal, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUser } from '@/contexts/user-context';
-import { RANK_ORDER } from '@/lib/reputation';
+import { RANK_IMAGES } from '@/lib/rank-images';
+import { RANK_ORDER, RANK_REQUIREMENTS } from '@/lib/reputation';
 import { StorageService } from '@/lib/storage';
 import type { Rank } from '@/types/user';
 
 import { formatInteger } from '../lib/format';
-import { formatShu, getHeatLevel, getNextHeatLevel, getRankLabel, MAX_HEAT_LEVEL } from '../lib/heat-levels';
-import { THERMAL_COLORS, TYPE } from '../theme';
-import { HeatBurst, Sparks } from './heat-burst';
-import { HeatPepper } from './pixel-art';
+import { getHeatLevel, getNextHeatLevel, getRankLabel, MAX_HEAT_LEVEL } from '../lib/heat-levels';
+import { RANKUP_BAND_COLORS, RANKUP_BANDS, RANKUP_IMAGES } from '../lib/rankup-backdrop';
+import { DURATION, fadeIn, revealAt, STAGGER, TIMING } from '../motion';
+import { INK, THERMAL_COLORS, TYPE } from '../theme';
 import { PixelButton } from './pixel-button';
+import { PixelCore } from './pixel-core';
+import { SensorGrid } from './thermal-background';
 
 interface RankUpContextValue {
   /** Shows the overlay for the current rank (or a demo jump) without a real rank change */
@@ -77,7 +82,7 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
     if (!transition) return;
     const timer = setTimeout(() => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 650);
+    }, STAGGER.lead + DURATION.emphasis);
     return () => clearTimeout(timer);
   }, [transition]);
 
@@ -94,34 +99,30 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
-      <Animated.View entering={FadeIn.duration(200)} style={[styles.root, { width, height }]}>
-        <HeatBurst width={width} height={height} />
-        <Sparks width={width} height={height} />
+      <Animated.View entering={fadeIn()} style={[styles.root, { width, height }]}>
+        <RankUpBackdrop width={width} height={height} />
+        <SensorGrid width={width} height={height} />
+        <TopFade width={width} />
 
-        <View style={[styles.center, { top: height * 0.17 }]}>
-          <Animated.View entering={FadeIn.duration(300).delay(300)} style={styles.badge}>
-            <Text style={[TYPE.label10, { color: THERMAL_COLORS.gold }]}>NEW HEAT LEVEL UNLOCKED</Text>
+        <View style={[styles.center, { top: height * 0.15 }]}>
+          <Animated.View entering={revealAt(0)} style={styles.badge}>
+            <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>NEW HEAT LEVEL</Text>
           </Animated.View>
 
-          <BouncingPepper levelRank={transition.to} />
+          <BouncingMascot levelRank={transition.to} />
 
-          <Animated.Text entering={FadeIn.duration(320).delay(500)} style={[TYPE.display72, styles.ink, { marginTop: 10 }]}>
+          <Animated.Text entering={revealAt(1)} style={[TYPE.display72, styles.ink]}>
             LEVEL UP
           </Animated.Text>
-          <Animated.Text entering={FadeIn.duration(300).delay(620)} style={[TYPE.meta26, styles.ink]}>
-            {`${getRankLabel(transition.from)}  >  ${getRankLabel(transition.to)}`}
-          </Animated.Text>
 
-          <Animated.View entering={FadeIn.duration(320).delay(740)}>
+          <Animated.View entering={revealAt(2)}>
             <View>
               <View style={[styles.cardShadow]} />
               <View style={styles.card}>
                 <Text style={[TYPE.display40, { color: THERMAL_COLORS.cream }]}>{level.name}</Text>
-                <Text style={[TYPE.meta20, { color: THERMAL_COLORS.orange }]}>
-                  {`${formatInteger(level.shu)} SHU · HEAT ${level.level} / ${MAX_HEAT_LEVEL}`}
-                </Text>
-                <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>
-                  {next ? `NEXT: ${next.name} · ${formatShu(next.shu)} SHU` : 'MAXIMUM HEAT REACHED'}
+                <Text style={[TYPE.meta18, { color: INK.body }]}>{`LEVEL ${level.level} OF ${MAX_HEAT_LEVEL}`}</Text>
+                <Text style={[TYPE.label12, { color: INK.muted }]}>
+                  {next ? `NEXT: ${next.name} · ${getNextRequirement(next.rank)}` : 'MAXIMUM HEAT REACHED'}
                 </Text>
               </View>
             </View>
@@ -129,22 +130,127 @@ function RankUpOverlay({ transition, onClose }: RankUpOverlayProps) {
         </View>
 
         <Animated.View
-          entering={FadeIn.duration(320).delay(900)}
-          style={[styles.actions, { bottom: insets.bottom + 24 }]}
+          entering={revealAt(3)}
+          style={[styles.actions, { bottom: insets.bottom }]}
         >
-          <PixelButton label="CONTINUE >" variant="void" onPress={onClose} />
-          <PixelButton label="SHARE MY HEAT" variant="paper" onPress={() => void handleShare()} />
+          <PixelButton label="CONTINUE >" variant="gold" onPress={onClose} />
+          <PixelButton label="SHARE MY LEVEL CARD" variant="outline" onPress={() => void handleShare()} />
         </Animated.View>
       </Animated.View>
     </Modal>
   );
 }
 
-function BouncingPepper({ levelRank }: { levelRank: Rank }) {
+/**
+ * Figma "Heat Burst · pulse · 10pt": eight blurred colour bands around the
+ * mascot, with the Power heat camera's FLIP wave rolling out of the hottest
+ * band in tall ellipses that follow the burst's shape, taking its colours
+ * from the band under each card.
+ */
+function RankUpBackdrop({ width, height }: { width: number; height: number }) {
+  const scale = width / FIGMA_WIDTH;
+  const bands = useMemo(() => RANKUP_BANDS.map(buildRows), []);
+  const core = useMemo(() => getBounds(RANKUP_BANDS[RANKUP_BANDS.length - 1]), []);
+
+  // Squash vertical distance by the core's aspect ratio, so the rings come out as tall ellipses
+  const distanceAt = useCallback(
+    (x: number, y: number) => Math.hypot(x - core.x * scale, (y - core.y * scale) * core.aspect),
+    [core, scale],
+  );
+
+  const sampleColor = useCallback(
+    (x: number, y: number) => {
+      const fx = x / scale;
+      const row = Math.floor(y / scale / CELL) * CELL;
+      for (let index = bands.length - 1; index >= 0; index--) {
+        if (bands[index].get(row)?.some(([x0, x1]) => fx >= x0 && fx < x1)) return RANKUP_BAND_COLORS[index];
+      }
+      return RANKUP_BAND_COLORS[0];
+    },
+    [bands, scale],
+  );
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {RANKUP_IMAGES.map((image, index) => (
+        <Image
+          key={index}
+          source={image.source}
+          contentFit="fill"
+          style={[styles.band, { left: image.x * scale, top: image.y * scale, width: image.w * scale, height: image.h * scale }]}
+        />
+      ))}
+      <PixelCore
+        width={width}
+        height={height}
+        centerX={core.x * scale}
+        centerY={core.y * scale}
+        sampleColor={sampleColor}
+        distanceAt={distanceAt}
+        variant="flip"
+      />
+    </View>
+  );
+}
+
+/** Figma "Top Fade": keeps the status bar readable over the burst */
+function TopFade({ width }: { width: number }) {
+  return (
+    <Svg width={width} height={TOP_FADE_HEIGHT} style={styles.topFade} pointerEvents="none">
+      <Defs>
+        <LinearGradient id="rankup-top-fade" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={THERMAL_COLORS.void} stopOpacity={0.7} />
+          <Stop offset="0.6" stopColor={THERMAL_COLORS.void} stopOpacity={0.35} />
+          <Stop offset="1" stopColor={THERMAL_COLORS.void} stopOpacity={0} />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width={width} height={TOP_FADE_HEIGHT} fill="url(#rankup-top-fade)" />
+    </Svg>
+  );
+}
+
+/** Row y → pixel runs `[x0, x1]` on that row */
+function buildRows(runs: Array<number>): Map<number, Array<[number, number]>> {
+  const rows = new Map<number, Array<[number, number]>>();
+  for (let i = 0; i < runs.length; i += 3) {
+    const row = rows.get(runs[i + 1]) ?? [];
+    row.push([runs[i], runs[i + 2]]);
+    rows.set(runs[i + 1], row);
+  }
+  return rows;
+}
+
+/** Middle of a band's bounding box in Figma points, and its width ÷ height */
+function getBounds(runs: Array<number>): { x: number; y: number; aspect: number } {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < runs.length; i += 3) {
+    x0 = Math.min(x0, runs[i]);
+    x1 = Math.max(x1, runs[i + 2]);
+    y0 = Math.min(y0, runs[i + 1]);
+    y1 = Math.max(y1, runs[i + 1] + CELL);
+  }
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, aspect: (x1 - x0) / (y1 - y0) };
+}
+
+/** "250 REP + 4-WEEK STREAK" — what the next rank asks for */
+function getNextRequirement(rank: Rank): string {
+  const rule = RANK_REQUIREMENTS[rank];
+  const parts = [`${rule.points} REP`];
+  if (rule.requiresStreak > 0) parts.push(`${rule.requiresStreak}-WEEK STREAK`);
+  if (rule.requiresEngagedProposal) parts.push('A PROPOSAL THAT HEATS UP');
+  if (rule.requiresPassedProposal) parts.push('A PASSED PROPOSAL');
+  return parts.join(' + ');
+}
+
+/** The new rank's mascot drops in (same drop as before, now the rank art) */
+function BouncingMascot({ levelRank }: { levelRank: Rank }) {
   const drop = useSharedValue(0);
 
   useEffect(() => {
-    drop.value = withDelay(250, withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) }));
+    drop.value = withDelay(STAGGER.lead, withTiming(1, TIMING.emphasis));
   }, [drop]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -153,13 +259,8 @@ function BouncingPepper({ levelRank }: { levelRank: Rank }) {
   }));
 
   return (
-    <Animated.View style={[{ paddingVertical: 8 }, animatedStyle]}>
-      <View>
-        <View style={{ position: 'absolute', left: 6, top: 6 }}>
-          <HeatPepper level={getHeatLevel(levelRank)} silhouette={THERMAL_COLORS.void} />
-        </View>
-        <HeatPepper level={getHeatLevel(levelRank)} />
-      </View>
+    <Animated.View style={animatedStyle}>
+      <Image source={RANK_IMAGES[levelRank] as number} style={{ width: MASCOT_SIZE, height: MASCOT_SIZE }} contentFit="contain" />
     </Animated.View>
   );
 }
@@ -170,6 +271,11 @@ interface RankTransition {
 }
 
 const LAST_RANK_KEY = 'thermal:last_rank';
+const MASCOT_SIZE = 170;
+const FIGMA_WIDTH = 402;
+/** Figma pixel-run height: the 10pt sensor grid */
+const CELL = 10;
+const TOP_FADE_HEIGHT = 120;
 const styles = StyleSheet.create({
   root: {
     backgroundColor: THERMAL_COLORS.void,
@@ -192,7 +298,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: THERMAL_COLORS.void,
-    paddingHorizontal: 18,
+    paddingHorizontal: 22,
     paddingVertical: 14,
     alignItems: 'center',
     gap: 4,
@@ -210,5 +316,13 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     gap: 14,
+  },
+  band: {
+    position: 'absolute',
+  },
+  topFade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
 });

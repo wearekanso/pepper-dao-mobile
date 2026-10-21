@@ -8,11 +8,13 @@ import { FEATURED_WALLETS } from '@/config/appkit';
 import { setWalletConnectOverride } from '@/contexts/wallet-context';
 import { telemetry } from '@/lib/telemetry';
 
-import { DashedDivider, Tag, Touchable } from './atoms';
+import { DashedDivider, Touchable } from './atoms';
 import { HardShadow } from './panel';
 import { PixelButton } from './pixel-button';
 import { ThermalSheet } from './thermal-sheet';
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { REPUTATION_POINTS } from '@/lib/reputation';
+
+import { INK, SIZE, SPACE, THERMAL_COLORS, TYPE } from '../theme';
 
 /**
  * Takes over "connect wallet" in the thermal design: every CONNECT button
@@ -61,7 +63,6 @@ function WalletPickerSheet({ visible, onClose }: WalletPickerSheetProps) {
     <ThermalSheet
       visible={visible}
       onClose={onClose}
-      eyebrow="WALLET · CHILIZ CHAIN"
       title="CONNECT WALLET"
       subtitle="Pick the wallet that holds your PEPPER."
       footer={<PixelButton label="ALL WALLETS · QR CODE" variant="outline" style={{ flex: 1 }} onPress={() => void openReown('AllWallets')} />}
@@ -87,9 +88,8 @@ function WalletPickerSheet({ visible, onClose }: WalletPickerSheetProps) {
                 </View>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={TYPE.label12}>{wallet.name}</Text>
-                  <Text style={[TYPE.meta16, { opacity: 0.6 }]}>{wallet.meta}</Text>
+                  <Text style={[TYPE.meta18, { color: INK.muted }]}>{WALLET_HINTS[wallet.key]}</Text>
                 </View>
-                {index === 0 ? <Tag label="BEST" color={THERMAL_COLORS.gold} /> : null}
                 <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
               </Touchable>
               {index < FEATURED_WALLETS.length - 1 ? <DashedDivider /> : null}
@@ -98,15 +98,26 @@ function WalletPickerSheet({ visible, onClose }: WalletPickerSheetProps) {
         </View>
       </View>
 
-      <Touchable onPress={() => void openReown('Connect')} hitSlop={8} style={styles.social}>
-        <Text style={[TYPE.meta16, { opacity: 0.45 }]}>{'Email & social login  >'}</Text>
-      </Touchable>
+      <View style={styles.between}>
+        <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{`+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link`}</Text>
+        <Touchable onPress={() => void openReown('Connect')} hitSlop={8} style={[styles.between, { gap: 6 }]}>
+          <Text style={[TYPE.meta18, { color: INK.muted }]}>{'Email & social'}</Text>
+          <Text style={[TYPE.label12, { color: INK.muted }]}>{'>'}</Text>
+        </Touchable>
+      </View>
     </ThermalSheet>
   );
 }
 
 /** ThermalSheet's slide-out (220ms) plus a beat for the native modal to unmount */
 const SHEET_DISMISS_MS = 360;
+
+/** Sentence-case hints under each wallet (Figma) */
+const WALLET_HINTS: Record<(typeof FEATURED_WALLETS)[number]['key'], string> = {
+  socios: 'Recommended · Chiliz native',
+  metamask: 'Browser & mobile',
+  okx: 'Multi-chain',
+};
 
 /** Pixel marks in brand colours (20pt grid), same as the Figma draft */
 const LOGOS: Record<(typeof FEATURED_WALLETS)[number]['key'], { d: string; color: string }> = {
@@ -116,9 +127,14 @@ const LOGOS: Record<(typeof FEATURED_WALLETS)[number]['key'], { d: string; color
 };
 
 const styles = StyleSheet.create({
+  between: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   list: {
-    backgroundColor: THERMAL_COLORS.panel,
-    borderWidth: 2,
+    backgroundColor: THERMAL_COLORS.void,
+    borderWidth: SIZE.stroke,
     borderColor: THERMAL_COLORS.border,
   },
   row: {
@@ -135,10 +151,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: THERMAL_COLORS.void,
     borderWidth: 2,
-    borderColor: THERMAL_COLORS.borderSoft,
-  },
-  social: {
-    alignSelf: 'center',
-    paddingVertical: 4,
+    borderColor: THERMAL_COLORS.border,
   },
 });

@@ -25,7 +25,7 @@ export const CONSTITUTION: Array<ConstitutionArticle> = [
   {
     number: '02',
     title: 'IDENTITY & POWER',
-    summary: 'Community-powered · 8.88Q fixed supply · ve-voting',
+    summary: 'Community-powered · 8.89Q max supply · ve-voting',
     body: 'Pepper DAO is a decentralized, community-powered organization within the Chiliz ecosystem. Not a corporate office — a parliament of participation coordinated through the DAO portal.',
     points: [
       { label: 'SUPPLY', text: '8,888.8 Quadrillion — a high-supply community asset for maximum distribution.' },
@@ -73,7 +73,7 @@ export const CONSTITUTION: Array<ConstitutionArticle> = [
   {
     number: '06',
     title: 'THE RED LINES',
-    summary: 'Cannot be changed by standard proposals',
+    summary: 'Rules no standard proposal can change',
     locked: true,
     points: [
       { label: 'INFLATION CADENCE', text: "The Community/Pepper allocation must be spent gradually and strategically to protect the token and the project's health." },
@@ -89,3 +89,18 @@ export const CONSTITUTION: Array<ConstitutionArticle> = [
     quote: 'Transparency over secrecy: every penny spent is visible for all to see. No hidden deals, no private spending — ever.',
   },
 ];
+
+/** "At a glance" facts above the articles */
+export const GLANCE_FACTS = [
+  { label: 'TO PROPOSE', value: '1T', hint: 'PEPPER staked', icon: 'vault' },
+  { label: 'MINISTERS', value: '3', hint: 'Prime · Treasury · Publicity', icon: 'logo' },
+  { label: 'MAX SUPPLY', value: '8.89Q', hint: 'PEPPER, max', icon: 'supply' },
+  { label: 'BURN', value: '50%', hint: 'of every trade fee', icon: 'burn' },
+] as const;
+
+/** Voting tracks: how long a vote runs and what it is for */
+export const VOTING_TRACKS = [
+  { label: 'STANDARD', duration: '7 DAYS', hint: 'Big spending, protocol changes, elections', tone: 'violet' },
+  { label: 'AGILE', duration: '3 DAYS', hint: 'Community initiatives, small adjustments', tone: 'orange' },
+  { label: 'FAST', duration: '48 HOURS', hint: 'Urgent fixes · needs 66% YES (supermajority)', tone: 'red' },
+] as const;

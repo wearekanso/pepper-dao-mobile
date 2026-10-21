@@ -5,7 +5,7 @@ import Animated, { interpolate, type SharedValue, useAnimatedStyle } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-import { SPACE, THERMAL_COLORS, TYPE } from '../theme';
+import { SIZE, SPACE, THERMAL_COLORS, TYPE } from '../theme';
 import { Touchable } from './atoms';
 
 interface ThermalNavBarProps {
@@ -19,6 +19,8 @@ interface ThermalNavBarProps {
   scrollY: SharedValue<number>;
   /** Scroll offset at which the bar has fully filled in (≈ large title height) */
   collapseAt?: number;
+  /** Show the title at rest too, not only once the large title scrolls away */
+  pinnedTitle?: boolean;
   /** Space above the bar; defaults to the status bar inset */
   topInset?: number;
 }
@@ -37,6 +39,7 @@ export function ThermalNavBar({
   scrollY,
   collapseAt = 44,
   topInset,
+  pinnedTitle = false,
 }: ThermalNavBarProps) {
   const insets = useSafeAreaInsets();
   const top = topInset ?? insets.top;
@@ -45,7 +48,7 @@ export function ThermalNavBar({
     opacity: interpolate(scrollY.value, [collapseAt * 0.4, collapseAt], [0, 1], 'clamp'),
   }));
   const titleStyle = useAnimatedStyle(() => {
-    const progress = interpolate(scrollY.value, [collapseAt * 0.7, collapseAt * 1.2], [0, 1], 'clamp');
+    const progress = pinnedTitle ? 1 : interpolate(scrollY.value, [collapseAt * 0.7, collapseAt * 1.2], [0, 1], 'clamp');
     return { opacity: progress, transform: [{ translateY: (1 - progress) * 6 }] };
   });
 
@@ -54,24 +57,10 @@ export function ThermalNavBar({
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.fill, fillStyle]} />
 
       <View pointerEvents="box-none" style={styles.row}>
-        <Touchable
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onBack();
-          }}
-          hitSlop={4}
-          pressedOpacity={0.6}
-          accessibilityRole="button"
-          accessibilityLabel={icon === 'close' ? 'Close' : 'Back'}
-          style={styles.button}
-        >
-          <Svg width={9} height={icon === 'close' ? 9 : 15} viewBox={icon === 'close' ? '0 0 9 9' : '0 0 9 15'}>
-            <Path d={icon === 'close' ? CLOSE_PATH : CHEVRON_PATH} fill={THERMAL_COLORS.white} />
-          </Svg>
-        </Touchable>
+        <NavIconButton icon={icon} onPress={onBack} />
 
         <Animated.View pointerEvents="none" style={[styles.title, titleStyle]}>
-          <Text style={TYPE.label15} numberOfLines={1}>
+          <Text style={TYPE.label14} numberOfLines={1}>
             {title}
           </Text>
         </Animated.View>
@@ -90,10 +79,38 @@ export function ThermalNavBar({
   );
 }
 
+interface NavIconButtonProps {
+  icon: 'back' | 'close';
+  onPress: () => void;
+  disabled?: boolean;
+}
+
+/** 36pt square back / close button shared by the nav bar and sheets */
+export function NavIconButton({ icon, onPress, disabled = false }: NavIconButtonProps) {
+  return (
+    <Touchable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
+      disabled={disabled}
+      hitSlop={4}
+      pressedOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel={icon === 'close' ? 'Close' : 'Back'}
+      style={[styles.button, disabled && { opacity: 0.3 }]}
+    >
+      <Svg width={9} height={icon === 'close' ? 9 : 15} viewBox={icon === 'close' ? '0 0 9 9' : '0 0 9 15'}>
+        <Path d={icon === 'close' ? CLOSE_PATH : CHEVRON_PATH} fill={THERMAL_COLORS.white} />
+      </Svg>
+    </Touchable>
+  );
+}
+
 /** Bar height below the top inset */
 export const NAV_BAR_HEIGHT = 44;
 
-const BUTTON_SIZE = 36;
+const BUTTON_SIZE = SIZE.navButton;
 const TITLE_INSET = 84;
 
 /** Pixel "<" (3pt cells), same as the Figma component */
@@ -126,7 +143,7 @@ const styles = StyleSheet.create({
     height: BUTTON_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: THERMAL_COLORS.chip,
+    backgroundColor: THERMAL_COLORS.void,
     borderWidth: 2,
     borderColor: THERMAL_COLORS.border,
   },

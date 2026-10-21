@@ -13,7 +13,8 @@ import Animated, {
 
 import type { VoteOption } from '@/types/governance';
 
-import { formatStampDate } from '../lib/format';
+import { formatDayMonth } from '../lib/format';
+import { DURATION, TIMING } from '../motion';
 import { THERMAL_COLORS, TYPE } from '../theme';
 import { HardShadow } from './panel';
 
@@ -23,19 +24,23 @@ interface VoteStampProps {
   date?: Date;
   /** Slam the stamp in (fresh vote) instead of just showing it */
   slam: boolean;
+  /** `mini` sits in the results header; `large` is the hero of the vote-recorded sheet */
+  size?: 'mini' | 'large';
 }
 
 /**
- * Rubber "VOTED" stamp. On a fresh vote it slams down from above with a
- * heavy haptic; otherwise it fades in already pressed onto the tally.
+ * Red rubber "VOTED" stamp in the results card header. On a fresh vote it
+ * slams down from above with a heavy haptic; otherwise it fades in already
+ * pressed on.
  */
-export function VoteStamp({ option, date, slam }: VoteStampProps) {
+export function VoteStamp({ option, date, slam, size = 'mini' }: VoteStampProps) {
+  const isLarge = size === 'large';
   const progress = useSharedValue(slam ? 0 : 1);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
     if (!slam) {
-      opacity.value = withTiming(1, { duration: 500 });
+      opacity.value = withTiming(1, { duration: DURATION.emphasis });
       progress.value = 1;
       return;
     }
@@ -54,15 +59,15 @@ export function VoteStamp({ option, date, slam }: VoteStampProps) {
     const scale = 2.6 - 1.6 * progress.value;
     return {
       opacity: opacity.value,
-      transform: [{ rotate: `${24 - 12 * progress.value}deg` }, { scale }],
+      transform: [{ rotate: `${STAMP_TILT + 12 * (1 - progress.value)}deg` }, { scale }],
     };
   });
 
   return (
     <Animated.View pointerEvents="none" style={[styles.stamp, animatedStyle]}>
-      <View style={styles.inner}>
-        <Text style={[TYPE.display40, styles.ink]}>VOTED</Text>
-        <Text style={[TYPE.label10, styles.ink]}>{date ? `${option} · ${formatStampDate(date)}` : option}</Text>
+      <View style={[styles.inner, isLarge && styles.innerLarge]}>
+        <Text style={[isLarge ? TYPE.display40 : TYPE.meta18, styles.ink]}>VOTED</Text>
+        <Text style={[TYPE.label12, styles.ink]}>{date ? `${option} · ${formatDayMonth(date.toISOString())}` : option}</Text>
       </View>
     </Animated.View>
   );
@@ -78,12 +83,12 @@ export function RepSticker({ points, delay = 420 }: RepStickerProps) {
   const pop = useSharedValue(0);
 
   useEffect(() => {
-    pop.value = withDelay(delay, withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }));
+    pop.value = withDelay(delay, withTiming(1, TIMING.enter));
   }, [delay, pop]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: pop.value,
-    transform: [{ translateY: (1 - pop.value) * 6 }, { rotate: '-6deg' }],
+    transform: [{ translateY: (1 - pop.value) * 6 }],
   }));
 
   return (
@@ -98,34 +103,40 @@ export function RepSticker({ points, delay = 420 }: RepStickerProps) {
   );
 }
 
+/** Resting tilt of the stamp (deg) */
+const STAMP_TILT = 4;
+
 function impact() {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 }
 
 const styles = StyleSheet.create({
   stamp: {
-    borderWidth: 4,
-    borderColor: THERMAL_COLORS.cream,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignItems: 'center',
-    shadowColor: THERMAL_COLORS.orange,
-    shadowOpacity: 0.9,
-    shadowRadius: 9,
+    borderWidth: 3,
+    borderColor: THERMAL_COLORS.red,
+    padding: 4,
+    shadowColor: THERMAL_COLORS.red,
+    shadowOpacity: 0.85,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
   },
   inner: {
-    borderWidth: 1,
-    borderColor: THERMAL_COLORS.cream,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: THERMAL_COLORS.red,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  innerLarge: {
+    flexDirection: 'column',
+    gap: 2,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
   },
   ink: {
-    color: THERMAL_COLORS.cream,
-    textShadowColor: 'rgba(255,122,0,0.9)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    color: THERMAL_COLORS.red,
   },
   sticker: {
     backgroundColor: THERMAL_COLORS.gold,
