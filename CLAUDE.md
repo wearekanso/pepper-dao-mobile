@@ -39,6 +39,7 @@ SafeAreaProvider > AppKitProvider > QueryClientProvider > UserProvider > Onboard
 ### Key Integrations
 - **Wallet**: Reown AppKit (`@reown/appkit-react-native`) for WalletConnect/Web3 wallet connections
 - **Blockchain**: Chiliz Chain (mainnet: 88888, testnet: 88882) via ethers.js and viem
+- **Governance**: Aragon OSx PEPPER MainDao `0x26Ed…9213`. Each voting track (Standard / Agile / Fast) is its own TokenVoting 1.4 plugin; voting power is vePEPPER read from an IVotes adapter. All addresses live in `config/aragon-governance.ts`; keep `supabase/functions/sync-proposals` in sync with it
 - **Backend**: Supabase for cached proposals, push notifications, and user profiles
 - **State**: TanStack Query for server state, React Context for app state
 
@@ -46,7 +47,7 @@ SafeAreaProvider > AppKitProvider > QueryClientProvider > UserProvider > Onboard
 1. `sync-proposals` Edge Function indexes blockchain events into Supabase `proposals` table
 2. Mobile app fetches from Supabase (fast reads) via `services/governance-api.ts`
 3. `useGovernanceProposals` hook wraps the API with TanStack Query caching
-4. On-chain voting uses direct contract calls via `lib/aragon-onchain.ts`
+4. On-chain voting and proposal creation call the proposal's track plugin directly via `services/voting-api.ts` and `services/proposal-api.ts`. Proposal IDs are 256-bit: keep them as strings/BigInt, never `parseInt`
 
 ### Directory Structure
 - `app/` - Expo Router file-based routes (tabs, modals, deep links)

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { GovernanceTrack } from '@/config/aragon-governance';
+
 /**
  * Resource link for proposal
  */
@@ -16,6 +18,8 @@ export interface ProposalFormState {
   summary: string;
   body: string;
   resources: Array<ProposalResource>;
+  /** Voting track (plugin) the proposal is created on */
+  track: GovernanceTrack;
 }
 
 /**
@@ -26,6 +30,7 @@ export const INITIAL_PROPOSAL_FORM_STATE: ProposalFormState = {
   summary: '',
   body: '',
   resources: [],
+  track: 'STANDARD',
 };
 
 /**
@@ -78,6 +83,8 @@ export interface CreateProposalParams {
   summary?: string;
   body?: string;
   resources?: Array<ProposalResource>;
+  /** Voting track (plugin) to create the proposal on; defaults to STANDARD */
+  track?: GovernanceTrack;
 }
 
 /**
@@ -86,6 +93,8 @@ export interface CreateProposalParams {
 export interface CreateProposalResult {
   status: 'success' | 'error';
   proposalId?: string;
+  /** Track plugin the proposal was created on */
+  pluginAddress?: string;
   txHash?: string;
   error?: string;
 }

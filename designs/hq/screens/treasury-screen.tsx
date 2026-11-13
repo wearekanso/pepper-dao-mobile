@@ -66,8 +66,13 @@ export function TreasuryScreen() {
           />
           <Holding
             swatch={HQ_COLORS.muted}
-            label="CEX fund (CHZ)"
-            value={metrics ? formatCompact(tokenToNumber(metrics.cexFundChzBalance, 18)) : '–'}
+            label="Pepper Treasury (CHZ)"
+            value={metrics ? formatCompact(tokenToNumber(metrics.pepperTreasuryChzBalance, 18)) : '–'}
+          />
+          <Holding
+            swatch={HQ_COLORS.muted}
+            label="Daily buyback (CHZ)"
+            value={metrics ? formatCompact(tokenToNumber(metrics.buybackChzBalance, 18)) : '–'}
           />
         </Card>
       </Animated.View>

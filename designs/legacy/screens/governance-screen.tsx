@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { ProposalCard } from '@/components/governance';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { PROPOSAL_CREATION_ENABLED } from '@/config/features';
 import { FOREST_GREEN } from '@/constants/theme';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import type { GovernanceProposal } from '@/types/governance';
@@ -110,15 +111,17 @@ export function LegacyGovernanceScreen() {
             >
               Proposals
             </ThemedText>
-            <Pressable
-              onPress={handleCreateProposal}
-              className="flex-row items-center gap-1.5 border border-white/60 px-3 py-1.5 active:bg-white/10"
-            >
-              <Text className="font-['PPNeueBit-Bold'] text-sm text-white">+</Text>
-              <Text className="font-['PPNeueBit-Bold'] text-xs uppercase tracking-wider text-white">
-                Submit
-              </Text>
-            </Pressable>
+            {PROPOSAL_CREATION_ENABLED ? (
+              <Pressable
+                onPress={handleCreateProposal}
+                className="flex-row items-center gap-1.5 border border-white/60 px-3 py-1.5 active:bg-white/10"
+              >
+                <Text className="font-['PPNeueBit-Bold'] text-sm text-white">+</Text>
+                <Text className="font-['PPNeueBit-Bold'] text-xs uppercase tracking-wider text-white">
+                  Submit
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
           <Text className="text-xs text-white/80" style={{ maxWidth: 260 }}>
             Review Pepper DAO governance proposals created in Aragon.

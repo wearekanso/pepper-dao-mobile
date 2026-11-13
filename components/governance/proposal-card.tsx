@@ -45,7 +45,9 @@ function VotingPreview(props: VotingPreviewProps) {
   if (proposal.type === 'PEP') {
     const currentStage = (proposal as any).currentStage ?? 0;
     const approvals = proposal.approvals || 0;
-    const minApprovals = proposal.minApprovals || 3;
+    const minApprovals = proposal.minApprovals ?? 0;
+    // MainDao proposals have no ministers stage (minApprovals 0)
+    const hasMinistersStage = minApprovals > 0;
     const approvalPercent = minApprovals > 0 ? (approvals / minApprovals) * 100 : 0;
     const stage1Passed = approvals >= minApprovals;
     const isRejected = proposal.status === 'REJECTED';
@@ -58,7 +60,7 @@ function VotingPreview(props: VotingPreviewProps) {
         BigInt(proposal.tally.no || '0') > 0n ||
         BigInt(proposal.tally.abstain || '0') > 0n);
 
-    if (currentStage >= 1 && hasVotes) {
+    if ((currentStage >= 1 || !hasMinistersStage) && hasVotes) {
       // Show Token Voting progress for Stage 2
       const distribution = getVoteDistribution(proposal.tally!);
       const supportPercent = basisPointsToPercentage(
@@ -82,6 +84,10 @@ function VotingPreview(props: VotingPreviewProps) {
           <Text className="text-[9px] text-white/60">{supportPercent.toFixed(0)}% Support</Text>
         </View>
       );
+    }
+
+    if (!hasMinistersStage) {
+      return null;
     }
 
     // Show Multisig approval progress for Stage 1
@@ -109,8 +115,9 @@ function VotingPreview(props: VotingPreviewProps) {
     );
   }
 
-  // For non-PEP proposals with voting data
-  if (!proposal.tally || !proposal.votingSettings || !proposal.totalVotingPower) {
+  // For non-PEP proposals with voting data. The snapshot total can be
+  // unknown; then the bar and support still show, only participation is left out.
+  if (!proposal.tally || !proposal.votingSettings) {
     return null;
   }
 
@@ -127,9 +134,9 @@ function VotingPreview(props: VotingPreviewProps) {
   const supportPercent = basisPointsToPercentage(
     calculateCurrentSupport(proposal.tally),
   );
-  const participationPercent = basisPointsToPercentage(
-    calculateParticipation(proposal.tally, proposal.totalVotingPower),
-  );
+  const participationPercent = proposal.totalVotingPower
+    ? basisPointsToPercentage(calculateParticipation(proposal.tally, proposal.totalVotingPower))
+    : null;
 
   return (
     <View className="mt-2 border-t-2 border-white/20 pt-2">
@@ -146,8 +153,12 @@ function VotingPreview(props: VotingPreviewProps) {
       </View>
       <View className="flex-row items-center gap-3">
         <Text className="text-[9px] text-white/60">{supportPercent.toFixed(0)}% Support</Text>
-        <Text className="text-[9px] text-white/60">•</Text>
-        <Text className="text-[9px] text-white/60">{participationPercent.toFixed(0)}% Participation</Text>
+        {participationPercent !== null ? (
+          <>
+            <Text className="text-[9px] text-white/60">•</Text>
+            <Text className="text-[9px] text-white/60">{participationPercent.toFixed(0)}% Participation</Text>
+          </>
+        ) : null}
       </View>
     </View>
   );
@@ -180,6 +191,7 @@ export function ProposalCard(props: ProposalCardProps) {
           <VotingTrackBadge
             startDate={proposal.startDate}
             endDate={proposal.endDate}
+            track={proposal.track ?? undefined}
           />
           {proposal.type === 'ADMIN' ? (
             <Text className="text-[10px] text-white/80">Admin</Text>

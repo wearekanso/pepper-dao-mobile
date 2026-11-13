@@ -79,7 +79,7 @@ export function VoteModal(props: VoteModalProps) {
     txError,
     vote,
     resetTxState,
-  } = useVoting(proposal.pluginProposalId);
+  } = useVoting(proposal.pluginProposalId, proposal.pluginAddress);
 
   const isPending = txStatus === 'pending';
   const isSuccess = txStatus === 'success';

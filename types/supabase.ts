@@ -13,9 +13,10 @@ export interface Database {
       proposals: {
         Row: {
           id: string;
-          proposal_id: number;
+          /** 256-bit on-chain proposal id, stored as TEXT */
+          proposal_id: string;
           plugin_address: string;
-          plugin_type: 'MULTISIG' | 'SPP' | 'ADMIN';
+          plugin_type: 'TOKEN_VOTING' | 'MULTISIG' | 'SPP' | 'ADMIN';
           title: string;
           description: string | null;
           status: 'PENDING' | 'ACTIVE' | 'SUCCEEDED' | 'DEFEATED' | 'EXECUTED' | 'CANCELED';
@@ -84,6 +85,8 @@ export interface Database {
           last_synced_block: number;
           last_sync_at: string | null;
           sync_in_progress: boolean | null;
+          /** When the current lock was taken; a lock older than 10 min is taken over */
+          sync_started_at: string | null;
           error_message: string | null;
           created_at: string;
           updated_at: string;
@@ -100,7 +103,7 @@ export interface Database {
       notification_history: {
         Row: {
           id: string;
-          proposal_id: number;
+          proposal_id: string;
           notification_type: 'new_proposal' | 'vote_reminder' | 'proposal_ended' | 'proposal_executed';
           sent_at: string;
           recipients_count: number | null;
@@ -149,7 +152,7 @@ export interface Database {
         Row: {
           id: string;
           profile_id: string;
-          proposal_id: number;
+          proposal_id: string;
           vote_type: VoteType;
           transaction_hash: string | null;
           created_at: string;
@@ -157,7 +160,7 @@ export interface Database {
         Insert: {
           id?: string;
           profile_id: string;
-          proposal_id: number;
+          proposal_id: string;
           vote_type: VoteType;
           transaction_hash?: string | null;
           created_at?: string;
@@ -173,7 +176,7 @@ export interface Database {
           total_after: number;
           rank_before: Rank | null;
           rank_after: Rank | null;
-          proposal_id: number | null;
+          proposal_id: string | null;
           streak_id: string | null;
           metadata: Record<string, unknown>;
           created_at: string;
@@ -186,7 +189,7 @@ export interface Database {
           total_after: number;
           rank_before?: Rank | null;
           rank_after?: Rank | null;
-          proposal_id?: number | null;
+          proposal_id?: string | null;
           streak_id?: string | null;
           metadata?: Record<string, unknown>;
           created_at?: string;

@@ -1,3 +1,5 @@
+import { MAIN_DAO_TREASURY_ADDRESS } from '@/config/pepper-token';
+
 /**
  * The HQ building, top to bottom. Each floor is a section of the app;
  * `band` is the floor's vertical slice of the cross-section art (0…1).
@@ -26,7 +28,7 @@ export const HQ_IMAGES = {
 export const BUILDING_RATIO = 960 / 1280;
 
 export const EXPLORER_URL = 'https://chiliscan.com';
-export const TREASURY_ADDRESS = '0x1d70027242A82362fd2c818bb2A3a2cAaA513816';
+export const TREASURY_ADDRESS = MAIN_DAO_TREASURY_ADDRESS;
 
 export interface Floor {
   key: string;

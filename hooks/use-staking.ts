@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
 import { ACTIVE_CHAIN_ID } from '@/config/chains';
+import { STAKING_DEPOSITS_ENABLED } from '@/config/features';
 import { type StakingData, type TransactionStatus } from '@/config/staking';
 import { useWallet } from '@/contexts/wallet-context';
 import { telemetry } from '@/lib/telemetry';
@@ -218,6 +219,13 @@ export function useStaking(): UseStakingReturn {
   // Stake tokens
   const stake = useCallback(
     async (amount: string): Promise<StakingOperationResult> => {
+      // Safety net behind the hidden UI: never send PEPPER to the retired contract
+      if (!STAKING_DEPOSITS_ENABLED) {
+        setTxStatus('error');
+        setTxError(STAKING_CLOSED_MESSAGE);
+        return { success: false, error: STAKING_CLOSED_MESSAGE };
+      }
+
       setTxStatus('pending');
       setTxError(null);
 
@@ -392,3 +400,6 @@ export function useStaking(): UseStakingReturn {
   };
 }
 
+
+const STAKING_CLOSED_MESSAGE =
+  'Staking has moved to vePEPPER. Lock your PEPPER on Aragon to get voting power.';
