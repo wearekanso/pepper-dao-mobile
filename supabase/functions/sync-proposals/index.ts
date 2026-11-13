@@ -357,6 +357,10 @@ Deno.serve(async (req: Request) => {
 
     // Process new proposals
     const newProposals: Array<ProposalData> = [];
+    // First proposal that could not be read: indexing stops there so the
+    // next run retries it, instead of skipping it for good and shifting the
+    // display indexes of every later proposal on the same track
+    let failedProposal: { proposalId: string; blockNumber: bigint; reason: string } | null = null;
 
     for (const log of allLogs) {
       const pluginAddress = (log.address as string).toLowerCase();
@@ -427,7 +431,10 @@ Deno.serve(async (req: Request) => {
         newProposals.push(proposalData);
         console.log(`Proposal ${proposalId} on ${pluginAddress} processed (Status: ${status})`);
       } catch (e) {
-        console.error(`Failed to process proposal ${proposalId}:`, e);
+        const reason = e instanceof Error ? e.message : String(e);
+        console.error(`Failed to process proposal ${proposalId}, stopping here to retry next run:`, reason);
+        failedProposal = { proposalId, blockNumber: log.blockNumber as bigint, reason };
+        break;
       }
     }
 
@@ -502,8 +509,11 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Update sync state with where we actually got to
-    const syncedToBlock = currentBlock > startBlock ? currentBlock - BigInt(1) : startBlock;
+    // Update sync state with where we actually got to. If a proposal failed,
+    // stop just before its block: the next run starts there again (proposals
+    // already stored in that block are skipped by the "already exists" check).
+    const scannedToBlock = currentBlock > startBlock ? currentBlock - BigInt(1) : startBlock;
+    const syncedToBlock = failedProposal ? failedProposal.blockNumber - BigInt(1) : scannedToBlock;
     const needsMoreSync = syncedToBlock < latestBlock;
 
     await supabase
@@ -512,7 +522,9 @@ Deno.serve(async (req: Request) => {
         last_synced_block: Number(syncedToBlock),
         last_sync_at: new Date().toISOString(),
         sync_in_progress: false,
-        error_message: null,
+        error_message: failedProposal
+          ? `Proposal ${failedProposal.proposalId} at block ${failedProposal.blockNumber} not indexed yet: ${failedProposal.reason}`.slice(0, 500)
+          : null,
       })
       .eq('id', 'default');
 
@@ -522,6 +534,7 @@ Deno.serve(async (req: Request) => {
         message: `Synced to block ${syncedToBlock}`,
         newProposals: newProposals.length,
         updatedProposals: updatedCount,
+        retryProposalId: failedProposal?.proposalId ?? null,
         needsMoreSync,
         latestBlock: Number(latestBlock),
         blocksRemaining: Number(latestBlock - syncedToBlock),
@@ -601,23 +614,22 @@ async function readProposal(
 /**
  * Whether the vote passed (support threshold and participation both met).
  * Only meaningful once the vote has closed.
+ *
+ * Errors are thrown, not mapped to false: a false here stores DEFEATED,
+ * which is final and never refreshed, so a flaky RPC call would mark a
+ * passed vote as defeated for good. Callers retry on the next run.
  */
 async function readHasSucceeded(
   publicClient: any,
   pluginAddress: string,
   proposalId: bigint,
 ): Promise<boolean> {
-  try {
-    return await publicClient.readContract({
-      address: pluginAddress,
-      abi: TOKEN_VOTING_ABI,
-      functionName: 'hasSucceeded',
-      args: [proposalId],
-    });
-  } catch (e) {
-    console.error(`hasSucceeded failed for ${proposalId}:`, e);
-    return false;
-  }
+  return await publicClient.readContract({
+    address: pluginAddress,
+    abi: TOKEN_VOTING_ABI,
+    functionName: 'hasSucceeded',
+    args: [proposalId],
+  });
 }
 
 /**
