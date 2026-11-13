@@ -92,7 +92,7 @@ export const CONSTITUTION: Array<ConstitutionArticle> = [
 
 /** "At a glance" facts above the articles */
 export const GLANCE_FACTS = [
-  { label: 'TO PROPOSE', value: '1T', hint: 'PEPPER staked', icon: 'vault' },
+  { label: 'TO PROPOSE', value: '1T', hint: 'vePEPPER · 10T on Fast', icon: 'vault' },
   { label: 'MINISTERS', value: '3', hint: 'Prime · Treasury · Publicity', icon: 'logo' },
   { label: 'MAX SUPPLY', value: '8.89Q', hint: 'PEPPER, max', icon: 'supply' },
   { label: 'BURN', value: '50%', hint: 'of every trade fee', icon: 'burn' },
@@ -100,7 +100,7 @@ export const GLANCE_FACTS = [
 
 /** Voting tracks: how long a vote runs and what it is for */
 export const VOTING_TRACKS = [
-  { label: 'STANDARD', duration: '7 DAYS', hint: 'Big spending, protocol changes, elections', tone: 'violet' },
-  { label: 'AGILE', duration: '3 DAYS', hint: 'Community initiatives, small adjustments', tone: 'orange' },
-  { label: 'FAST', duration: '48 HOURS', hint: 'Urgent fixes · needs 66% YES (supermajority)', tone: 'red' },
+  { label: 'STANDARD', duration: '7 DAYS', hint: 'Big spending, protocol changes, elections · 51% YES, 10% turnout', tone: 'violet' },
+  { label: 'AGILE', duration: '3 DAYS', hint: 'Community initiatives, small adjustments · 51% YES, 15% turnout', tone: 'orange' },
+  { label: 'FAST', duration: '48 HOURS', hint: 'Urgent fixes · 66% YES (supermajority), 30% turnout', tone: 'red' },
 ] as const;

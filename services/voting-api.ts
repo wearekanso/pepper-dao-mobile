@@ -1,15 +1,19 @@
 /**
  * Voting API Service
  *
- * Provides contract interaction methods for governance voting.
- * Uses ethers.js for contract calls and integrates with Reown AppKit
- * for wallet provider access.
+ * Contract interactions for voting on PEPPER MainDao proposals.
+ * Each voting track is its own TokenVoting plugin, so every call
+ * needs the plugin address the proposal lives on.
+ *
+ * Uses ethers.js for signing (via the Reown AppKit provider) and viem
+ * for reads.
  */
 
 import { BrowserProvider, Contract } from 'ethers';
 import { createPublicClient, http, type Address } from 'viem';
 
-import { ARAGON_CONTRACTS, TOKEN_VOTING_ABI } from '@/config/aragon-abis';
+import { TOKEN_VOTING_ABI, VOTING_TOKEN_ABI } from '@/config/aragon-abis';
+import { PEPPER_DAO_GOVERNANCE_CONFIG } from '@/config/aragon-governance';
 import { chiliz } from '@/config/chains';
 import type { VoteOption } from '@/types/governance';
 
@@ -30,18 +34,29 @@ export interface VotingTransactionResult {
 }
 
 /**
- * Vote option mapping to contract enum values
- * Matches IMajorityVoting.VoteOption enum:
- * - None = 0 (not voted)
- * - Abstain = 1
- * - Yes = 2
- * - No = 3
+ * Proposal on a specific track plugin.
+ * proposalId is the 256-bit on-chain id; keep it as bigint (never Number).
+ */
+export interface VotingTarget {
+  pluginAddress: Address;
+  proposalId: bigint;
+}
+
+/**
+ * Vote option mapping to IMajorityVoting.VoteOption
  */
 const VOTE_OPTION_MAP: Record<VoteOption, number> = {
   NONE: 0,
   ABSTAIN: 1,
   YES: 2,
   NO: 3,
+};
+
+const VOTE_OPTION_BY_VALUE: Record<number, VoteOption> = {
+  0: 'NONE',
+  1: 'ABSTAIN',
+  2: 'YES',
+  3: 'NO',
 };
 
 /**
@@ -53,54 +68,29 @@ const publicClient = createPublicClient({
 });
 
 /**
- * Create ethers provider and signer from wallet provider
- */
-async function getProviderAndSigner(walletProvider: Eip1193Provider) {
-  const provider = new BrowserProvider(walletProvider);
-  const signer = await provider.getSigner();
-  return { provider, signer };
-}
-
-/**
- * Get user's voting power for a proposal at its snapshot block
- * @param userAddress - User's wallet address
- * @param proposalId - On-chain proposal ID (numeric)
+ * Get a user's voting power for a proposal: their vePEPPER at the
+ * proposal's snapshot timestamp (the amount a vote would carry).
  */
 export async function getVotingPower(
   userAddress: string,
-  proposalId: number
+  target: VotingTarget,
 ): Promise<bigint> {
   try {
-    // First check if user can vote (this validates voting power at snapshot)
-    const canVoteResult = await publicClient.readContract({
-      address: ARAGON_CONTRACTS.tokenVoting.address,
+    const proposal = await publicClient.readContract({
+      address: target.pluginAddress,
       abi: TOKEN_VOTING_ABI,
-      functionName: 'canVote',
-      args: [BigInt(proposalId), userAddress as Address, VOTE_OPTION_MAP.YES],
+      functionName: 'getProposal',
+      args: [target.proposalId],
     });
 
-    if (!canVoteResult) {
-      return BigInt(0);
-    }
+    const snapshotTimepoint = proposal[2].snapshotTimepoint;
 
-    // Get the user's vote data (if they've already voted)
-    const voteData = await publicClient.readContract({
-      address: ARAGON_CONTRACTS.tokenVoting.address,
-      abi: TOKEN_VOTING_ABI,
-      functionName: 'getVote',
-      args: [BigInt(proposalId), userAddress as Address],
+    return await publicClient.readContract({
+      address: PEPPER_DAO_GOVERNANCE_CONFIG.votingToken,
+      abi: VOTING_TOKEN_ABI,
+      functionName: 'getPastVotes',
+      args: [userAddress as Address, snapshotTimepoint],
     });
-
-    // If user has voted, return their voting power from the vote
-    const typedVoteData = voteData as unknown as [number, bigint];
-    if (typedVoteData[0] !== VOTE_OPTION_MAP.NONE) {
-      return typedVoteData[1];
-    }
-
-    // User hasn't voted yet but can vote - they have voting power
-    // The actual voting power will be determined at vote submission
-    // For now we return a placeholder indicating eligibility
-    return BigInt(1);
   } catch (error) {
     console.error('[VotingAPI] Failed to get voting power:', error);
     throw new Error('Unable to check voting power. Please try again.');
@@ -108,29 +98,42 @@ export async function getVotingPower(
 }
 
 /**
- * Check if a user can vote on a proposal
- * @param userAddress - User's wallet address
- * @param proposalId - On-chain proposal ID
- * @param voteOption - Vote option to check
+ * Get the option a user already voted (NONE if they have not voted)
+ */
+export async function getUserVoteOption(
+  userAddress: string,
+  target: VotingTarget,
+): Promise<VoteOption> {
+  try {
+    const option = await publicClient.readContract({
+      address: target.pluginAddress,
+      abi: TOKEN_VOTING_ABI,
+      functionName: 'getVoteOption',
+      args: [target.proposalId, userAddress as Address],
+    });
+
+    return VOTE_OPTION_BY_VALUE[Number(option)] ?? 'NONE';
+  } catch (error) {
+    console.error('[VotingAPI] Failed to get vote option:', error);
+    throw new Error('Unable to check your vote. Please try again.');
+  }
+}
+
+/**
+ * Check if a user can vote on a proposal with the given option
  */
 export async function canVote(
   userAddress: string,
-  proposalId: number,
-  voteOption: VoteOption
+  target: VotingTarget,
+  voteOption: VoteOption,
 ): Promise<boolean> {
   try {
-    const result = await publicClient.readContract({
-      address: ARAGON_CONTRACTS.tokenVoting.address,
+    return await publicClient.readContract({
+      address: target.pluginAddress,
       abi: TOKEN_VOTING_ABI,
       functionName: 'canVote',
-      args: [
-        BigInt(proposalId),
-        userAddress as Address,
-        VOTE_OPTION_MAP[voteOption],
-      ],
+      args: [target.proposalId, userAddress as Address, VOTE_OPTION_MAP[voteOption]],
     });
-
-    return result;
   } catch (error) {
     console.warn('[VotingAPI] Failed to check if can vote:', error);
     throw new Error('Unable to verify voting eligibility. Please try again.');
@@ -140,48 +143,35 @@ export async function canVote(
 /**
  * Submit a vote on a governance proposal
  * @param walletProvider - EIP-1193 provider from Reown AppKit
- * @param proposalId - On-chain proposal ID (numeric)
- * @param voterAddress - Voter's wallet address
+ * @param target - Track plugin and on-chain proposal ID
  * @param voteOption - Vote option (YES, NO, ABSTAIN)
  */
 export async function submitVote(
   walletProvider: Eip1193Provider,
-  proposalId: number,
-  voterAddress: string,
-  voteOption: VoteOption
+  target: VotingTarget,
+  voteOption: VoteOption,
 ): Promise<VotingTransactionResult> {
   try {
-    const { signer } = await getProviderAndSigner(walletProvider);
+    const provider = new BrowserProvider(walletProvider);
+    const signer = await provider.getSigner();
 
-    const tokenVotingContract = new Contract(
-      ARAGON_CONTRACTS.tokenVoting.address,
-      TOKEN_VOTING_ABI,
-      signer
-    );
+    const tokenVotingContract = new Contract(target.pluginAddress, TOKEN_VOTING_ABI, signer);
 
     const voteOptionValue = VOTE_OPTION_MAP[voteOption];
 
     console.log('[VotingAPI] Submitting vote:', {
-      contractAddress: ARAGON_CONTRACTS.tokenVoting.address,
-      proposalId,
-      voterAddress,
+      pluginAddress: target.pluginAddress,
+      proposalId: target.proposalId.toString(),
       voteOption,
-      voteOptionValue,
     });
 
-    // Token Voting vote function signature:
-    // vote(uint256 _proposalId, address _voter, uint8 _voteOption, uint256 _newVotingPower)
-    // _newVotingPower is used for increasing voting power (0 = use current power)
-    const tx = await tokenVotingContract.vote(
-      BigInt(proposalId),
-      voterAddress,
-      voteOptionValue,
-      BigInt(0) // Use current voting power
-    );
+    // vote(uint256 _proposalId, uint8 _voteOption, bool _tryEarlyExecution)
+    // Early execution stays off: execution is a separate, deliberate step
+    // and keeps the vote's gas predictable.
+    const tx = await tokenVotingContract.vote(target.proposalId, voteOptionValue, false);
 
     console.log('[VotingAPI] Vote tx submitted:', tx.hash);
 
-    // Wait for confirmation
     const receipt = await tx.wait();
     const txHash = receipt?.hash ?? tx.hash;
 
@@ -218,18 +208,20 @@ export function parseVotingError(error: unknown): string {
   // Proposal not active
   if (
     errorMessage.includes('ProposalExecutionForbidden') ||
+    errorMessage.includes('NonexistentProposal') ||
     errorMessage.includes('not active')
   ) {
     return 'This proposal is no longer accepting votes';
   }
 
-  // Already voted
+  // Vote rejected by the plugin (already voted without vote replacement, closed, or no power)
   if (errorMessage.includes('VoteCastForbidden')) {
-    return 'You have already voted on this proposal';
+    return 'You cannot vote on this proposal: you may have already voted or have no vePEPPER at its snapshot';
   }
 
   // No voting power
   if (
+    errorMessage.includes('NoVotingPower') ||
     errorMessage.includes('insufficient voting power') ||
     errorMessage.includes('no voting power')
   ) {

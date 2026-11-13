@@ -18,7 +18,13 @@ import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { PixelAlertModal } from '@/components/ui/pixel-alert-modal';
-import { PepperTokenMetrics } from '@/config/pepper-token';
+import {
+  BUYBACK_WALLET_ADDRESS,
+  MAIN_DAO_TREASURY_ADDRESS,
+  PEPPER_STAKING_CONTRACT_ADDRESS,
+  PEPPER_TREASURY_WALLET_ADDRESS,
+  PepperTokenMetrics,
+} from '@/config/pepper-token';
 import { DANGER_RED, FOREST_GREEN, SUCCESS_GREEN } from '@/constants/theme';
 import { usePepperTokenMetrics } from '@/hooks/use-pepper-token-metrics';
 import {
@@ -32,7 +38,8 @@ const ICON_TOTAL_SUPPLY = require('@/assets/images/pepper/total-supply.png');
 const ICON_TREASURY = require('@/assets/images/pepper/treasury.png');
 const ICON_VAULT = require('@/assets/images/pepper/vault.png');
 const ICON_BURN = require('@/assets/images/pepper/burn.png');
-const ICON_CEX_FUND = require('@/assets/images/pepper/cex-fund.png');
+const ICON_PEPPER_TREASURY = require('@/assets/images/pepper/treasury.png');
+const ICON_BUYBACK = require('@/assets/images/pepper/pepper.png');
 
 const FANX_SWAP_URL = 'https://app.fanx.xyz/trade/swap';
 
@@ -51,7 +58,9 @@ export function PepperDashboard({ showHeader = true }: PepperDashboardProps) {
     useState<boolean>(false);
   const [isStakedInfoVisible, setIsStakedInfoVisible] =
     useState<boolean>(false);
-  const [isCexFundInfoVisible, setIsCexFundInfoVisible] =
+  const [isPepperTreasuryInfoVisible, setIsPepperTreasuryInfoVisible] =
+    useState<boolean>(false);
+  const [isBuybackInfoVisible, setIsBuybackInfoVisible] =
     useState<boolean>(false);
 
   const decimals = metrics?.decimals ?? 18;
@@ -128,8 +137,11 @@ export function PepperDashboard({ showHeader = true }: PepperDashboardProps) {
             onStakedInfoPress={() => {
               setIsStakedInfoVisible(true);
             }}
-            onCexFundInfoPress={() => {
-              setIsCexFundInfoVisible(true);
+            onPepperTreasuryInfoPress={() => {
+              setIsPepperTreasuryInfoVisible(true);
+            }}
+            onBuybackInfoPress={() => {
+              setIsBuybackInfoVisible(true);
             }}
           />
         </View>
@@ -147,7 +159,7 @@ export function PepperDashboard({ showHeader = true }: PepperDashboardProps) {
         onClose={() => setIsTreasuryInfoVisible(false)}
         title="Treasury"
         message="These funds are managed by the PEPPER community through voting."
-        copyableAddress="0x1d70027242A82362fd2c818bb2A3a2cAaA513816"
+        copyableAddress={MAIN_DAO_TREASURY_ADDRESS}
         type="info"
       />
 
@@ -156,16 +168,25 @@ export function PepperDashboard({ showHeader = true }: PepperDashboardProps) {
         onClose={() => setIsStakedInfoVisible(false)}
         title="Staked Pepper"
         message="This is the total amount of staked PEPPER."
-        copyableAddress="0x5cA4C88339D89B2547a001003Cca84F62F557A72"
+        copyableAddress={PEPPER_STAKING_CONTRACT_ADDRESS}
         type="info"
       />
 
       <PixelAlertModal
-        visible={isCexFundInfoVisible}
-        onClose={() => setIsCexFundInfoVisible(false)}
-        title="CEX Fund"
-        message="The CEX Fund will be used to secure a Tier 1 Centralized Exchange listing for PEPPER. If the funds raised are insufficient after 90 days, they will be returned to the PEPPER Treasury to be managed by the community."
-        copyableAddress="0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B"
+        visible={isPepperTreasuryInfoVisible}
+        onClose={() => setIsPepperTreasuryInfoVisible(false)}
+        title="Pepper Treasury"
+        message="The Pepper Treasury wallet holds the funds shown on peppercoin.com. Every move is visible on-chain."
+        copyableAddress={PEPPER_TREASURY_WALLET_ADDRESS}
+        type="info"
+      />
+
+      <PixelAlertModal
+        visible={isBuybackInfoVisible}
+        onClose={() => setIsBuybackInfoVisible(false)}
+        title="Daily Buyback"
+        message="CHZ set aside for the daily PEPPER buyback. This wallet buys PEPPER from the market every day."
+        copyableAddress={BUYBACK_WALLET_ADDRESS}
         type="info"
       />
     </ScrollView>
@@ -181,7 +202,8 @@ interface MetricsGridProps {
   onPressTreasury: () => void;
   onTreasuryInfoPress: () => void;
   onStakedInfoPress: () => void;
-  onCexFundInfoPress: () => void;
+  onPepperTreasuryInfoPress: () => void;
+  onBuybackInfoPress: () => void;
 }
 
 function MetricsGrid({
@@ -193,7 +215,8 @@ function MetricsGrid({
   onPressTreasury,
   onTreasuryInfoPress,
   onStakedInfoPress,
-  onCexFundInfoPress,
+  onPepperTreasuryInfoPress,
+  onBuybackInfoPress,
 }: MetricsGridProps) {
   const hasData = metrics !== null;
 
@@ -268,16 +291,24 @@ function MetricsGrid({
           icon={ICON_VAULT}
         />
         <MetricTile
-          label="CEX Fund"
+          label="Pepper Treasury"
           value={
-            // TODO: restore dynamic value once CEX fund tracking is fixed
-            // hasData
-            //   ? `${formatPepperAmount(metrics.cexFundChzBalance, 18)} CHZ`
-            //   : '–'
-            '3,609,956 CHZ'
+            hasData
+              ? `${formatPepperAmount(metrics.pepperTreasuryChzBalance, 18)} CHZ`
+              : '–'
           }
-          onInfoPress={onCexFundInfoPress}
-          icon={ICON_CEX_FUND}
+          onInfoPress={onPepperTreasuryInfoPress}
+          icon={ICON_PEPPER_TREASURY}
+        />
+        <MetricTile
+          label="Daily Buyback"
+          value={
+            hasData
+              ? `${formatPepperAmount(metrics.buybackChzBalance, 18)} CHZ`
+              : '–'
+          }
+          onInfoPress={onBuybackInfoPress}
+          icon={ICON_BUYBACK}
         />
         <MetricTile
           label="Burnt Pepper"

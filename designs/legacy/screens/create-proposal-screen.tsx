@@ -26,6 +26,7 @@ const INITIAL_STATE: ProposalFormState = {
   summary: '',
   body: '',
   resources: [],
+  track: 'STANDARD',
 };
 
 export function LegacyCreateProposalScreen() {

@@ -1,3 +1,4 @@
+import { PEPPER_DAO_GOVERNANCE_CONFIG } from '@/config/aragon-governance';
 import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
 import type { GovernanceProposal } from '@/types/governance';
 
@@ -23,7 +24,9 @@ export function createDemoProposal(): GovernanceProposal {
   return {
     id: DEMO_PROPOSAL_ID,
     pluginProposalId: DEMO_PROPOSAL_ID,
-    key: 'PEP-DEMO',
+    pluginAddress: PEPPER_DAO_GOVERNANCE_CONFIG.trackPlugins.AGILE,
+    track: 'AGILE',
+    key: 'PAT-DEMO',
     title: 'Test vote: fund a PEPPER meme contest',
     description:
       'Demo proposal for testing the voting flow. Nothing here touches the chain — picking an option fakes the wallet signature and shows the confirmation screen.',
@@ -50,7 +53,7 @@ export function createDemoProposal(): GovernanceProposal {
       abstain: (BigInt(500_000) * WEI).toString(),
     },
     votingSettings: {
-      supportThreshold: 500_000,
+      supportThreshold: 510_000,
       minParticipation: 150_000,
       minDuration: 5 * DAY_MS / 1000,
       minProposerVotingPower: '0',

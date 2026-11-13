@@ -1,5 +1,8 @@
 import {
+  getTrackForPlugin,
+  GOVERNANCE_TRACK_PLUGIN_ADDRESSES,
   PEPPER_DAO_GOVERNANCE_CONFIG,
+  TRACK_KEY_PREFIX,
   type AragonGovernanceConfig,
 } from '@/config/aragon-governance';
 import { supabase, triggerProposalSync } from '@/config/supabase';
@@ -25,6 +28,14 @@ import type { Proposal } from '@/types/supabase';
  */
 
 /**
+ * Plugin addresses as stored by the indexer (lowercase). Queries are scoped
+ * to them so rows from the retired DAO never reach the UI.
+ */
+const INDEXED_PLUGIN_ADDRESSES: Array<string> = GOVERNANCE_TRACK_PLUGIN_ADDRESSES.map((address) =>
+  address.toLowerCase(),
+);
+
+/**
  * Get the governance configuration
  */
 export function getGovernanceConfig(): AragonGovernanceConfig {
@@ -35,13 +46,15 @@ export function getGovernanceConfig(): AragonGovernanceConfig {
  * Map plugin type to GovernanceProposalType
  */
 function mapPluginType(
-  pluginType: 'MULTISIG' | 'SPP' | 'ADMIN',
+  pluginType: Proposal['plugin_type'],
 ): GovernanceProposalType {
   switch (pluginType) {
     case 'ADMIN':
       return 'ADMIN';
     case 'MULTISIG':
       return 'MULTISIG';
+    // Track plugins (TokenVoting) are community votes
+    case 'TOKEN_VOTING':
     case 'SPP':
       return 'PEP';
     default:
@@ -86,14 +99,20 @@ function transformProposal(proposal: Proposal): GovernanceProposal {
   const abstain = BigInt(proposal.tally_abstain || '0');
   const totalVotingPower = (yes + no + abstain).toString();
 
-  // Use display_index for human-readable key (ADMIN-0, PEP-0), fallback to proposal_id
+  const track = getTrackForPlugin(proposal.plugin_address);
+
+  // Human-readable key per track like Aragon shows it (PST-2, PAT-20, PFT-1),
+  // falling back to the proposal type and then the raw id
+  const keyPrefix = track ? TRACK_KEY_PREFIX[track] : type;
   const displayKey = proposal.display_index !== null
-    ? `${type}-${proposal.display_index}`
-    : `${type}-${proposal.proposal_id}`;
+    ? `${keyPrefix}-${proposal.display_index}`
+    : `${keyPrefix}-${proposal.proposal_id}`;
 
   const transformed: GovernanceProposal = {
     id: `${proposal.plugin_address}_${proposal.proposal_id}`,
     pluginProposalId: proposal.proposal_id.toString(),
+    pluginAddress: proposal.plugin_address,
+    track,
     key: displayKey,
     title: proposal.title,
     description: proposal.description || '',
@@ -181,6 +200,7 @@ export async function fetchGovernanceProposals(
     let query = supabase
       .from('proposals')
       .select('*')
+      .in('plugin_address', INDEXED_PLUGIN_ADDRESSES)
       .order('start_date', { ascending: false });
 
     // Apply status filter at database level for better performance
@@ -263,6 +283,7 @@ export async function fetchGovernanceProposalById(
     const { data, error } = await supabase
       .from('proposals')
       .select('*')
+      .in('plugin_address', INDEXED_PLUGIN_ADDRESSES)
       .eq('proposal_id', proposalId)
       .single();
 

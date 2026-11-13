@@ -21,6 +21,11 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import {
+  GOVERNANCE_TRACK_RULES,
+  GOVERNANCE_TRACKS,
+  type GovernanceTrack,
+} from '@/config/aragon-governance';
 import { useWallet } from '@/contexts/wallet-context';
 import { useCreateProposal } from '@/hooks/use-create-proposal';
 import { useProposerEligibility } from '@/hooks/use-proposer-eligibility';
@@ -29,6 +34,7 @@ import {
   PROPOSAL_FORM_LIMITS,
   ProposalFormSchema,
   type ProposalFormState,
+  type ProposerEligibility,
 } from '@/types/proposal-form';
 
 import { DashedDivider, SectionLabel, StatusTag, Touchable } from '../components/atoms';
@@ -58,14 +64,18 @@ export function CreateProposalScreen() {
   const { submit, isSubmitting, status, error: submitError } = useCreateProposal();
   // Dev-only: ?demo=noteligible / ?demo=eligible shows that state without a wallet
   const demoEligibility = getDemoEligibility(useLocalSearchParams<{ demo?: string }>().demo);
-  const eligibilityQuery = useProposerEligibility();
-  const eligibility = demoEligibility ?? eligibilityQuery.data;
+  const [form, setForm] = useState<ProposalFormState>(INITIAL_PROPOSAL_FORM_STATE);
+  // The entry gate uses the easiest track; the picked track may ask for more
+  const baseEligibilityQuery = useProposerEligibility('STANDARD');
+  const trackEligibilityQuery = useProposerEligibility(form.track);
+  const eligibility = demoEligibility ?? baseEligibilityQuery.data;
+  const trackEligibility = demoEligibility ?? trackEligibilityQuery.data;
   const isConnected = demoEligibility !== null || wallet.isConnected;
   const [isStakeOpen, setIsStakeOpen] = useState(false);
   const isBlocked = isConnected && eligibility !== undefined && !eligibility.isEligible;
+  const isTrackBlocked = isConnected && trackEligibility !== undefined && !trackEligibility.isEligible;
 
   const [stage, setStage] = useState<Stage>(0);
-  const [form, setForm] = useState<ProposalFormState>(INITIAL_PROPOSAL_FORM_STATE);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [resourceInput, setResourceInput] = useState({ url: '', title: '' });
   const [showResourceInput, setShowResourceInput] = useState(false);
@@ -99,6 +109,7 @@ export function CreateProposalScreen() {
       setErrors((previous) => ({ ...previous, title: 'Title is required' }));
       return;
     }
+    if (stage === 0 && isTrackBlocked) return;
     goTo((stage + 1) as Stage);
   }
 
@@ -150,6 +161,7 @@ export function CreateProposalScreen() {
       summary: form.summary || undefined,
       body: form.body || undefined,
       resources: form.resources.length > 0 ? form.resources : undefined,
+      track: form.track,
     });
 
     if (submitResult.status === 'success' && submitResult.proposalId) {
@@ -162,7 +174,7 @@ export function CreateProposalScreen() {
     scrollY.value = event.contentOffset.y;
   });
 
-  const canSubmit = isConnected && form.title.trim().length > 0 && !isSubmitting;
+  const canSubmit = isConnected && form.title.trim().length > 0 && !isTrackBlocked && !isSubmitting;
   // The footer rides up with the keyboard so NEXT stays reachable while typing
   const keyboard = useAnimatedKeyboard();
   const footerKeyboardStyle = useAnimatedStyle(() => ({
@@ -210,7 +222,12 @@ export function CreateProposalScreen() {
 
               <Animated.View key={stage} entering={stepIn()} exiting={stepOut()} style={styles.stageBody}>
                 {stage === 0 ? (
-                  <BasicsStage form={form} errors={errors} onChange={updateField} />
+                  <BasicsStage
+                    form={form}
+                    errors={errors}
+                    onChange={updateField}
+                    trackShortfall={isTrackBlocked && trackEligibility ? trackEligibility : null}
+                  />
                 ) : stage === 1 ? (
                   <DetailsStage
                     form={form}
@@ -229,6 +246,7 @@ export function CreateProposalScreen() {
                 ) : (
                   <ReviewStage
                     form={form}
+                    canSubmitOnTrack={!isTrackBlocked}
                     isConnected={isConnected}
                     onConnect={() => void connect()}
                     onEdit={(index) => goTo(index)}
@@ -261,7 +279,13 @@ export function CreateProposalScreen() {
           ) : null}
           <View style={styles.actions}>
             {stage === 0 ? (
-              <PixelButton label="NEXT · DETAILS >" variant="gold" style={{ flex: 1 }} onPress={handleNext} />
+              <PixelButton
+                label="NEXT · DETAILS >"
+                variant="gold"
+                style={{ flex: 1 }}
+                disabled={isTrackBlocked}
+                onPress={handleNext}
+              />
             ) : stage === 1 ? (
               <>
                 <PixelButton label="< BACK" variant="outline" style={{ alignSelf: 'auto' }} onPress={() => goTo(0)} />
@@ -381,7 +405,12 @@ interface StageProps {
   onChange: <K extends keyof ProposalFormState>(field: K, value: ProposalFormState[K]) => void;
 }
 
-function BasicsStage({ form, errors, onChange }: StageProps) {
+interface BasicsStageProps extends StageProps {
+  /** Set when the wallet can't propose on the picked track */
+  trackShortfall: ProposerEligibility | null;
+}
+
+function BasicsStage({ form, errors, onChange, trackShortfall }: BasicsStageProps) {
   return (
     <>
       <Field label="TITLE" counter={`${form.title.length} / ${PROPOSAL_FORM_LIMITS.TITLE_MAX}`} error={errors.title}>
@@ -409,7 +438,51 @@ function BasicsStage({ form, errors, onChange }: StageProps) {
           hasError={Boolean(errors.summary)}
         />
       </Field>
+
+      <Field label="VOTING TRACK" helper="Sets how long the vote runs and what it takes to pass.">
+        <TrackPicker value={form.track} onChange={(track) => onChange('track', track)} />
+        {trackShortfall ? (
+          <Text style={styles.error}>
+            {`${GOVERNANCE_TRACK_RULES[form.track].label} needs ${formatPower(trackShortfall.minRequired)} vePEPPER to propose. You have ${formatPower(trackShortfall.userPower)}.`}
+          </Text>
+        ) : null}
+      </Field>
     </>
+  );
+}
+
+function TrackPicker({ value, onChange }: { value: GovernanceTrack; onChange: (track: GovernanceTrack) => void }) {
+  return (
+    <View style={{ gap: 10 }}>
+      {GOVERNANCE_TRACKS.map((track) => {
+        const rules = GOVERNANCE_TRACK_RULES[track];
+        const isSelected = track === value;
+        return (
+          <Panel
+            key={track}
+            padding={12}
+            gap={4}
+            borderColor={isSelected ? THERMAL_COLORS.gold : THERMAL_COLORS.border}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              onChange(track);
+            }}
+          >
+            <View style={styles.between}>
+              <View style={styles.row8}>
+                <View style={[styles.trackDot, { backgroundColor: TRACK_TONES[track] }]} />
+                <Text style={[TYPE.label12, isSelected && { color: THERMAL_COLORS.gold }]}>{rules.label}</Text>
+              </View>
+              <Text style={[TYPE.meta18, { color: isSelected ? THERMAL_COLORS.gold : INK.muted }]}>{rules.duration}</Text>
+            </View>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>{rules.useCase}</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>
+              {`${rules.supportPercent}% YES · ${rules.participationPercent}% turnout · ${rules.minProposerPower} vePEPPER to propose`}
+            </Text>
+          </Panel>
+        );
+      })}
+    </View>
   );
 }
 
@@ -514,6 +587,7 @@ function DetailsStage({
 
 interface ReviewStageProps {
   form: ProposalFormState;
+  canSubmitOnTrack: boolean;
   isConnected: boolean;
   onConnect: () => void;
   onEdit: (stage: Stage) => void;
@@ -521,10 +595,12 @@ interface ReviewStageProps {
   succeeded: boolean;
 }
 
-function ReviewStage({ form, isConnected, onConnect, onEdit, submitError, succeeded }: ReviewStageProps) {
+function ReviewStage({ form, canSubmitOnTrack, isConnected, onConnect, onEdit, submitError, succeeded }: ReviewStageProps) {
+  const rules = GOVERNANCE_TRACK_RULES[form.track];
   const rows: Array<{ label: string; value: string; stage: Stage }> = [
     { label: 'TITLE', value: form.title, stage: 0 },
     { label: 'SUMMARY', value: form.summary, stage: 0 },
+    { label: 'VOTING TRACK', value: `${rules.label} · ${rules.duration}`, stage: 0 },
     { label: 'DESCRIPTION', value: form.body ? `${form.body.length} characters` : '', stage: 1 },
     { label: 'LINKS', value: form.resources.map((resource) => resource.title).join(' · '), stage: 1 },
   ];
@@ -539,12 +615,20 @@ function ReviewStage({ form, isConnected, onConnect, onEdit, submitError, succee
         </Panel>
       ) : null}
 
+      {isConnected && !canSubmitOnTrack ? (
+        <Panel borderColor={STATUS_COLORS.negative.stroke}>
+          <StatusTag label="NOT ENOUGH vePEPPER" status="negative" />
+          <Text style={TYPE.body14}>{`${rules.label} needs ${rules.minProposerPower} vePEPPER to propose. Pick another track.`}</Text>
+          <PixelButton label="CHANGE TRACK >" variant="outlineGold" onPress={() => onEdit(0)} />
+        </Panel>
+      ) : null}
+
       <View style={{ gap: 10 }}>
         <SectionLabel label="HOW IT WILL LOOK IN DECIDE" />
         <Panel gap={6}>
           <View style={styles.between}>
             <StatusTag label="PENDING" status="upcoming" />
-            <Text style={[TYPE.meta18, { color: INK.muted }]}>NEEDS MINISTERS</Text>
+            <Text style={[TYPE.meta18, { color: INK.muted }]}>{`${rules.label} · ${rules.duration}`}</Text>
           </View>
           <Text style={[TYPE.label12, { color: INK_KIND }]}>COMMUNITY VOTE · NEW</Text>
           <Text style={TYPE.display24} numberOfLines={2}>
@@ -577,7 +661,7 @@ function ReviewStage({ form, isConnected, onConnect, onEdit, submitError, succee
 
       <Panel gap={10}>
         <Text style={[TYPE.label12, { color: INK.muted }]}>WHAT HAPPENS NEXT</Text>
-        {NEXT_STEPS.map((step, index) => (
+        {getNextSteps(form.track).map((step, index) => (
           <View key={step.title} style={[styles.row8, { alignItems: 'flex-start', gap: 10 }]}>
             <View style={styles.stepBox}>
               <Text style={[TYPE.label12, { color: INK.muted }]}>{index + 1}</Text>
@@ -600,7 +684,7 @@ function ReviewStage({ form, isConnected, onConnect, onEdit, submitError, succee
       {succeeded ? (
         <Panel borderColor={STATUS_COLORS.positive.stroke}>
           <StatusTag label="SUBMITTED" status="positive" />
-          <Text style={TYPE.body14}>Your proposal is on-chain. Ministers review it next.</Text>
+          <Text style={TYPE.body14}>Your proposal is on-chain. The community vote opens on its track.</Text>
         </Panel>
       ) : null}
     </>
@@ -688,11 +772,24 @@ const STEP_TODO = 'rgba(255,255,255,0.25)';
 const INK_KIND = 'rgba(255,255,255,0.5)';
 const ICON_VAULT = require('@/assets/images/pepper/vault.png');
 
-const NEXT_STEPS = [
-  { title: 'Ministers review', hint: '2 of 3 must approve' },
-  { title: 'Community vote', hint: 'Runs on its voting track · needs 50% YES' },
-  { title: 'Execution', hint: 'Actions run on-chain' },
-];
+/** Review "what happens next", with the picked track's numbers */
+function getNextSteps(track: GovernanceTrack): Array<{ title: string; hint: string }> {
+  const rules = GOVERNANCE_TRACK_RULES[track];
+  return [
+    {
+      title: 'Community vote',
+      hint: `${rules.label} track · ${rules.duration} · needs ${rules.supportPercent}% YES and ${rules.participationPercent}% turnout`,
+    },
+    { title: 'Execution', hint: 'Actions run on-chain' },
+  ];
+}
+
+/** Track swatches, same as the Rulebook's track list */
+const TRACK_TONES: Record<GovernanceTrack, string> = {
+  STANDARD: THERMAL_COLORS.violet,
+  AGILE: THERMAL_COLORS.orange,
+  FAST: THERMAL_COLORS.red,
+};
 const FOOTER_HEIGHT = 74;
 const FOOTER_NOTE_HEIGHT = 32;
 /** Fade strip at the top of the footer (= its top padding) */
@@ -703,6 +800,10 @@ const FOOTER_FADE = 24;
 const FOOTER_KEYBOARD_GAP = 12;
 
 const styles = StyleSheet.create({
+  trackDot: {
+    width: 8,
+    height: 8,
+  },
   root: {
     flex: 1,
     backgroundColor: THERMAL_COLORS.void,

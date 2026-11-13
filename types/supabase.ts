@@ -13,9 +13,10 @@ export interface Database {
       proposals: {
         Row: {
           id: string;
-          proposal_id: number;
+          /** 256-bit on-chain proposal id, stored as TEXT */
+          proposal_id: string;
           plugin_address: string;
-          plugin_type: 'MULTISIG' | 'SPP' | 'ADMIN';
+          plugin_type: 'TOKEN_VOTING' | 'MULTISIG' | 'SPP' | 'ADMIN';
           title: string;
           description: string | null;
           status: 'PENDING' | 'ACTIVE' | 'SUCCEEDED' | 'DEFEATED' | 'EXECUTED' | 'CANCELED';

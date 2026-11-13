@@ -1,52 +1,32 @@
 #!/bin/bash
 
-# Script to fetch ABIs from Chiliscan API
+# Fetch the TokenVoting ABI used by the PEPPER MainDao track plugins
 # Usage: ./scripts/fetch-abi-from-chiliscan.sh
+#
+# All three track plugins (Standard / Agile / Fast) are proxies to the same
+# TokenVoting 1.4 implementation, so one ABI covers them. Chiliscan's own API
+# no longer answers, so this uses Routescan's Etherscan-compatible API for
+# Chiliz mainnet (chain 88888).
 
-echo "📥 Fetching Aragon Contract ABIs from Chiliscan..."
-echo ""
+set -euo pipefail
 
-# Staged Processor Implementation
-echo "1️⃣ Fetching Staged Processor ABI..."
-echo "   Contract: 0xfca5b9bbe4f2a8b1bbcc0a6b32e9df53c6b7c135"
+IMPLEMENTATION="0x149aaef5Ffda32D6AC2cE127d04ff0Cf51b4A4AD"
+OUTPUT="/tmp/token-voting-abi.json"
 
-curl -s "https://api.chiliscan.com/api?module=contract&action=getabi&address=0xfca5b9bbe4f2a8b1bbcc0a6b32e9df53c6b7c135" \
+echo "📥 Fetching TokenVoting 1.4 ABI"
+echo "   Implementation: $IMPLEMENTATION"
+
+curl -s "https://api.routescan.io/v2/network/mainnet/evm/88888/etherscan/api?module=contract&action=getabi&address=$IMPLEMENTATION" \
   | jq -r '.result' \
-  > /tmp/staged-processor-abi.json
+  > "$OUTPUT"
 
-if [ -s /tmp/staged-processor-abi.json ]; then
-  echo "   ✅ Saved to: /tmp/staged-processor-abi.json"
+if [ -s "$OUTPUT" ] && jq -e 'type == "array"' "$OUTPUT" > /dev/null; then
+  echo "   ✅ Saved to: $OUTPUT"
 else
   echo "   ❌ Failed to fetch ABI"
+  exit 1
 fi
 
 echo ""
-
-# Token Voting Implementation
-echo "2️⃣ Fetching Token Voting ABI..."
-echo "   Contract: 0xf1b3ed4f41509f1661def5518d198e0b0257ffe1"
-
-curl -s "https://api.chiliscan.com/api?module=contract&action=getabi&address=0xf1b3ed4f41509f1661def5518d198e0b0257ffe1" \
-  | jq -r '.result' \
-  > /tmp/token-voting-abi.json
-
-if [ -s /tmp/token-voting-abi.json ]; then
-  echo "   ✅ Saved to: /tmp/token-voting-abi.json"
-else
-  echo "   ❌ Failed to fetch ABI"
-fi
-
-echo ""
-echo "📋 Next Steps:"
-echo ""
-echo "1. Open the JSON files:"
-echo "   - Staged Processor: /tmp/staged-processor-abi.json"
-echo "   - Token Voting: /tmp/token-voting-abi.json"
-echo ""
-echo "2. Copy the ABI arrays into config/aragon-abis.ts:"
-echo "   - Replace STAGED_PROCESSOR_ABI"
-echo "   - Replace TOKEN_VOTING_ABI"
-echo ""
-echo "3. Verify the ABIs work:"
-echo "   npm run test:abi-connection"
-echo ""
+echo "📋 Next step: update TOKEN_VOTING_ABI in config/aragon-abis.ts"
+echo "   (keep the trimmed set of errors, events and functions the app uses)"

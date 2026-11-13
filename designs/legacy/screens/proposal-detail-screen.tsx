@@ -624,6 +624,7 @@ export function LegacyProposalDetailScreen() {
               <VotingTrackBadge
                 startDate={proposal.startDate}
                 endDate={proposal.endDate}
+                track={proposal.track ?? undefined}
               />
               <ProposalStatusPill status={proposal.status} />
             </View>

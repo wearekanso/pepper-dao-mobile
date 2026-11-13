@@ -1,7 +1,9 @@
 /**
  * Proposal API Service
  *
- * Provides contract interaction methods for creating PEP proposals.
+ * Creates proposals on the PEPPER MainDao. Each voting track is its own
+ * TokenVoting plugin, so the track decides which contract is called and
+ * which minimum proposer power applies.
  * Uses ethers.js for contract calls and integrates with Reown AppKit
  * for wallet provider access.
  */
@@ -9,9 +11,20 @@
 import { BrowserProvider, Contract, hexlify, toUtf8Bytes, Interface } from 'ethers';
 import { createPublicClient, http } from 'viem';
 
+import { TOKEN_VOTING_ABI, VOTING_TOKEN_ABI } from '@/config/aragon-abis';
+import { PEPPER_DAO_GOVERNANCE_CONFIG, type GovernanceTrack } from '@/config/aragon-governance';
 import { ACTIVE_CHAIN } from '@/config/chains';
-import { ARAGON_CONTRACTS, STAGED_PROCESSOR_ABI, TOKEN_VOTING_ABI } from '@/config/aragon-abis';
 import type { CreateProposalParams, CreateProposalResult, ProposerEligibility } from '@/types/proposal-form';
+
+/** Track used when the caller does not pick one */
+export const DEFAULT_PROPOSAL_TRACK: GovernanceTrack = 'STANDARD';
+
+/**
+ * createProposal is overloaded on TokenVoting 1.4, so ethers needs the full
+ * signature. This one takes the vote option + early-execution flags.
+ */
+const CREATE_PROPOSAL_SIGNATURE =
+  'createProposal(bytes,(address,uint256,bytes)[],uint256,uint64,uint64,uint8,bool)';
 
 /**
  * EIP-1193 compatible provider interface
@@ -53,8 +66,10 @@ function parseProposalError(error: unknown): string {
       return 'Insufficient CHZ for gas fees';
     }
 
-    if (message.includes('proposer voting power')) {
-      return 'Insufficient voting power to create proposals';
+    // TokenVoting 1.4 gates CREATE_PROPOSAL_PERMISSION behind a voting-power
+    // condition, so a proposer below minProposerVotingPower gets DaoUnauthorized
+    if (message.includes('proposer voting power') || message.includes('daounauthorized')) {
+      return 'Insufficient vePEPPER to create proposals on this track';
     }
 
     return error.message;
@@ -85,17 +100,17 @@ function buildProposalMetadata(params: CreateProposalParams): string {
 }
 
 /**
- * Fetch minimum proposer voting power from Token Voting contract
+ * Fetch minimum proposer voting power for a track's plugin
  */
-export async function getMinProposerVotingPower(): Promise<bigint> {
+export async function getMinProposerVotingPower(
+  track: GovernanceTrack = DEFAULT_PROPOSAL_TRACK,
+): Promise<bigint> {
   try {
-    const minPower = await publicClient.readContract({
-      address: ARAGON_CONTRACTS.tokenVoting.address,
+    return await publicClient.readContract({
+      address: PEPPER_DAO_GOVERNANCE_CONFIG.trackPlugins[track],
       abi: TOKEN_VOTING_ABI,
       functionName: 'minProposerVotingPower',
     });
-
-    return minPower as bigint;
   } catch (error) {
     console.error('[ProposalAPI] Failed to fetch minProposerVotingPower:', error);
     throw new Error('Unable to check proposer requirements. Please try again.');
@@ -103,35 +118,29 @@ export async function getMinProposerVotingPower(): Promise<bigint> {
 }
 
 /**
- * Fetch user's voting power from Token Voting contract
- * Uses votingToken().balanceOf() to check locked PEPPER balance
+ * Fetch user's current vePEPPER voting power.
+ * TokenVoting lets someone propose when either their votes or their
+ * balance on the voting token clears the threshold, so take the larger.
  */
 export async function getUserVotingPower(userAddress: string): Promise<bigint> {
   try {
-    // First get the voting token address from Token Voting contract
-    const votingToken = await publicClient.readContract({
-      address: ARAGON_CONTRACTS.tokenVoting.address,
-      abi: TOKEN_VOTING_ABI,
-      functionName: 'votingToken',
-    });
+    const account = userAddress as `0x${string}`;
+    const [votes, balance] = await Promise.all([
+      publicClient.readContract({
+        address: PEPPER_DAO_GOVERNANCE_CONFIG.votingToken,
+        abi: VOTING_TOKEN_ABI,
+        functionName: 'getVotes',
+        args: [account],
+      }),
+      publicClient.readContract({
+        address: PEPPER_DAO_GOVERNANCE_CONFIG.votingToken,
+        abi: VOTING_TOKEN_ABI,
+        functionName: 'balanceOf',
+        args: [account],
+      }),
+    ]);
 
-    // Then get user's balance of the voting token (locked PEPPER)
-    const balance = await publicClient.readContract({
-      address: votingToken as `0x${string}`,
-      abi: [
-        {
-          type: 'function',
-          name: 'balanceOf',
-          stateMutability: 'view',
-          inputs: [{ name: 'account', type: 'address' }],
-          outputs: [{ name: '', type: 'uint256' }],
-        },
-      ] as const,
-      functionName: 'balanceOf',
-      args: [userAddress as `0x${string}`],
-    });
-
-    return balance as bigint;
+    return votes > balance ? votes : balance;
   } catch (error) {
     console.error('[ProposalAPI] Failed to fetch user voting power:', error);
     throw new Error('Unable to fetch your voting power. Please try again.');
@@ -139,11 +148,14 @@ export async function getUserVotingPower(userAddress: string): Promise<bigint> {
 }
 
 /**
- * Check if user is eligible to create proposals
+ * Check if user is eligible to create proposals on a track
  */
-export async function checkProposerEligibility(userAddress: string): Promise<ProposerEligibility> {
+export async function checkProposerEligibility(
+  userAddress: string,
+  track: GovernanceTrack = DEFAULT_PROPOSAL_TRACK,
+): Promise<ProposerEligibility> {
   const [minRequired, userPower] = await Promise.all([
-    getMinProposerVotingPower(),
+    getMinProposerVotingPower(track),
     getUserVotingPower(userAddress),
   ]);
 
@@ -155,10 +167,10 @@ export async function checkProposerEligibility(userAddress: string): Promise<Pro
 }
 
 /**
- * Create a PEP proposal on-chain via the Staged Proposal Processor
+ * Create a proposal on-chain on the chosen track's TokenVoting plugin
  *
  * @param walletProvider - EIP-1193 provider from Reown AppKit
- * @param params - Proposal content (title, summary, body, resources)
+ * @param params - Proposal content (title, summary, body, resources) and track
  */
 export async function createProposal(
   walletProvider: Eip1193Provider,
@@ -176,25 +188,18 @@ export async function createProposal(
       metadataLength: metadataJson.length,
     });
 
-    // Create contract instance
-    const contract = new Contract(
-      ARAGON_CONTRACTS.stagedProcessor.address,
-      STAGED_PROCESSOR_ABI,
-      signer
-    );
+    const track = params.track ?? DEFAULT_PROPOSAL_TRACK;
+    const pluginAddress = PEPPER_DAO_GOVERNANCE_CONFIG.trackPlugins[track];
+    const contract = new Contract(pluginAddress, TOKEN_VOTING_ABI, signer);
 
-    // Call createProposal with:
-    // - metadata: hex-encoded JSON
-    // - actions: empty array (text-only proposal)
-    // - startDate: 0 (use contract default)
-    // - endDate: 0 (use contract default)
-    // - data: empty bytes
-    const tx = await contract.createProposal(
+    const tx = await contract[CREATE_PROPOSAL_SIGNATURE](
       metadataBytes, // _metadata
       [], // _actions (empty for text-only)
-      0, // _startDate (0 = immediate)
-      0, // _endDate (0 = use default duration)
-      '0x' // _data (empty)
+      0, // _allowFailureMap
+      0, // _startDate (0 = now)
+      0, // _endDate (0 = start + track's minDuration)
+      0, // _voteOption (0 = None: creating does not cast a vote)
+      false // _tryEarlyExecution
     );
 
     console.log('[ProposalAPI] Proposal tx submitted:', tx.hash);
@@ -208,7 +213,7 @@ export async function createProposal(
     // Extract proposalId from event logs
     let proposalId: string | undefined;
     try {
-      const iface = new Interface(STAGED_PROCESSOR_ABI);
+      const iface = new Interface(TOKEN_VOTING_ABI);
       for (const log of receipt.logs) {
         try {
           const parsed = iface.parseLog({
@@ -231,6 +236,7 @@ export async function createProposal(
     return {
       status: 'success',
       proposalId,
+      pluginAddress,
       txHash,
     };
   } catch (error) {

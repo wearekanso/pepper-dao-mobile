@@ -488,8 +488,19 @@ function ExecutedBanner({ proposal }: { proposal: GovernanceProposal }) {
   );
 }
 
-/** Upcoming community vote: ministers still reviewing */
+/** Upcoming community vote: ministers still reviewing, or the vote has not started */
 function NotOpenPanel({ proposal }: { proposal: GovernanceProposal }) {
+  // MainDao proposals have no ministers stage, only a scheduled start
+  if (proposal.minApprovals === 0) {
+    return (
+      <Panel index={2}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>RESULTS</Text>
+        <Text style={[TYPE.display32, { color: INK_DIM }]}>NOT OPEN YET</Text>
+        <Text style={[TYPE.body14, { color: INK.muted }]}>Community voting has not started yet.</Text>
+      </Panel>
+    );
+  }
+
   return (
     <Panel index={2}>
       <Text style={[TYPE.label12, { color: INK.muted }]}>RESULTS</Text>

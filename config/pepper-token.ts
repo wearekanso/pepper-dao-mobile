@@ -25,14 +25,20 @@ export const PEPPER_ORIGINAL_SUPPLY = BigInt(
 );
 
 /**
- * DAO treasury addresses holding Pepper.
+ * Main DAO Treasury: the PEPPER MainDao contract itself holds the funds
+ * the community votes on (Aragon DAO 0x26Ed…9213).
+ */
+export const MAIN_DAO_TREASURY_ADDRESS = '0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213';
+
+/**
+ * DAO treasury addresses (the "Treasury" card: balances, 24h delta, activity).
  *
  * This array is intentionally designed to support multiple
  * addresses so new vaults can be added without changing
  * the data fetching logic.
  */
-export const PEPPER_TREASURY_ADDRESSES: Array<string> = [
-  '0x1d70027242A82362fd2c818bb2A3a2cAaA513816',
+export const DAO_TREASURY_ADDRESSES: Array<string> = [
+  MAIN_DAO_TREASURY_ADDRESS,
 ];
 
 /**
@@ -47,11 +53,17 @@ export const PEPPER_STAKING_CONTRACT_ADDRESSES: Array<string> = [
   '0x5cA4C88339D89B2547a001003Cca84F62F557A72', // This is the staking contract address
 ];
 
+/** Staking contract shown in the dashboard's Staked info sheet */
+export const PEPPER_STAKING_CONTRACT_ADDRESS = PEPPER_STAKING_CONTRACT_ADDRESSES[0];
+
 /**
- * CEX Fund wallet address for Tier 1 exchange listing.
- * Funds will be used for CEX listing or returned to treasury after 90 days.
+ * Pepper Treasury wallet: holds the funds shown on peppercoin.com.
+ * (Previously shown in the app as the "CEX Fund".)
  */
-export const CEX_FUND_ADDRESS = '0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B';
+export const PEPPER_TREASURY_WALLET_ADDRESS = '0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B';
+
+/** Wallet the daily PEPPER buyback runs from */
+export const BUYBACK_WALLET_ADDRESS = '0xd8f2CAD881757Fe40FC617edad2699CC7fC715bC';
 
 /**
  * Core Pepper token metrics used by the home dashboard.
@@ -66,7 +78,10 @@ export interface PepperTokenMetrics {
   treasuryBalance: bigint;
   treasuryChzBalance: bigint;
   treasuryChzDelta: bigint | null;
-  cexFundChzBalance: bigint;
+  /** CHZ held by the Pepper Treasury wallet */
+  pepperTreasuryChzBalance: bigint;
+  /** CHZ held by the daily buyback wallet */
+  buybackChzBalance: bigint;
   circulatingSupply: bigint;
   decimals: number;
   updatedAt: string;

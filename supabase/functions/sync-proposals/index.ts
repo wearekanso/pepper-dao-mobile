@@ -5,8 +5,11 @@ import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38
 /**
  * Sync Proposals Edge Function
  *
- * Indexes ProposalCreated events from the Aragon Staged Processor contract
- * and stores them in Supabase for fast retrieval.
+ * Indexes ProposalCreated events from the PEPPER MainDao track plugins
+ * (one Aragon TokenVoting 1.4 plugin per voting track) and stores them in
+ * Supabase for fast retrieval.
+ *
+ * DAO: 0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213 (chiliz-mainnet)
  *
  * Deployment: supabase functions deploy sync-proposals --no-verify-jwt
  *
@@ -32,16 +35,34 @@ const chiliz = {
   },
 } as const;
 
-// Contract addresses (Pepper DAO on Chiliz)
-const STAGED_PROCESSOR_ADDRESS = '0x8d639bd52301D7265Ebd1E6d4B0813f1CF190415' as const;
-const TOKEN_VOTING_ADDRESS = '0x4D1a5e3AFe6d5bC9dfE72A8332b67C916CEb77ff' as const;
-const MULTISIG_ADDRESS = '0x1FecF1c23dD2E8C7adF937583b345277d39bD554' as const;
+/**
+ * Track plugins of the PEPPER MainDao.
+ * Keep in sync with config/aragon-governance.ts (trackPlugins).
+ */
+const TRACK_PLUGINS = [
+  { track: 'STANDARD', address: '0xD17B92BD293942A071CDbF3A6e57A790c7FAAD67' },
+  { track: 'AGILE', address: '0xA80Bb5fc5B8CE2e84d31338579954e8e37d7f802' },
+  { track: 'FAST', address: '0xf544833da4f7Eb68A50b636b3eB5895310780137' },
+] as const;
+
+const TRACK_PLUGIN_ADDRESSES = TRACK_PLUGINS.map((plugin) => plugin.address);
+const TRACK_PLUGIN_ADDRESSES_LOWER = TRACK_PLUGIN_ADDRESSES.map((address) => address.toLowerCase());
 
 /**
- * Staged Proposal Processor ABI (minimal)
+ * The current track plugins were installed right after this block, so the
+ * indexer never needs to scan anything older (see config firstIndexedBlock).
+ */
+const FIRST_INDEXED_BLOCK = BigInt(34_100_000);
+
+/** Aragon's IPFS gateway: the public ipfs.io / dweb.link gateways now answer 429 */
+const IPFS_GATEWAY = 'https://aragon-1.mypinata.cloud/ipfs/';
+const IPFS_TIMEOUT_MS = 10_000;
+
+/**
+ * TokenVoting 1.4 ABI (minimal)
  * Full ABI: config/aragon-abis.ts
  */
-const STAGED_PROCESSOR_ABI = [
+const TOKEN_VOTING_ABI = [
   {
     anonymous: false,
     inputs: [
@@ -70,64 +91,16 @@ const STAGED_PROCESSOR_ABI = [
     inputs: [{ internalType: 'uint256', name: '_proposalId', type: 'uint256' }],
     name: 'getProposal',
     outputs: [
-      {
-        components: [
-          { internalType: 'uint128', name: 'allowFailureMap', type: 'uint128' },
-          { internalType: 'uint64', name: 'lastStageTransition', type: 'uint64' },
-          { internalType: 'uint16', name: 'currentStage', type: 'uint16' },
-          { internalType: 'uint16', name: 'stageConfigIndex', type: 'uint16' },
-          { internalType: 'bool', name: 'executed', type: 'bool' },
-          { internalType: 'bool', name: 'canceled', type: 'bool' },
-          { internalType: 'address', name: 'creator', type: 'address' },
-          {
-            components: [
-              { internalType: 'address', name: 'to', type: 'address' },
-              { internalType: 'uint256', name: 'value', type: 'uint256' },
-              { internalType: 'bytes', name: 'data', type: 'bytes' },
-            ],
-            internalType: 'struct Action[]',
-            name: 'actions',
-            type: 'tuple[]',
-          },
-          {
-            components: [
-              { internalType: 'address', name: 'target', type: 'address' },
-              { internalType: 'enum IPlugin.Operation', name: 'operation', type: 'uint8' },
-            ],
-            internalType: 'struct IPlugin.TargetConfig',
-            name: 'targetConfig',
-            type: 'tuple',
-          },
-        ],
-        internalType: 'struct StagedProposalProcessor.Proposal',
-        name: '',
-        type: 'tuple',
-      },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
-
-/**
- * Token Voting ABI (minimal)
- * Full ABI: config/aragon-abis.ts
- */
-const TOKEN_VOTING_ABI = [
-  {
-    inputs: [{ internalType: 'uint256', name: '_proposalId', type: 'uint256' }],
-    name: 'getProposal',
-    outputs: [
       { internalType: 'bool', name: 'open', type: 'bool' },
       { internalType: 'bool', name: 'executed', type: 'bool' },
       {
         components: [
           { internalType: 'enum MajorityVotingBase.VotingMode', name: 'votingMode', type: 'uint8' },
-          { internalType: 'uint32', name: 'supportThresholdRatio', type: 'uint32' },
+          { internalType: 'uint32', name: 'supportThreshold', type: 'uint32' },
           { internalType: 'uint64', name: 'startDate', type: 'uint64' },
           { internalType: 'uint64', name: 'endDate', type: 'uint64' },
-          { internalType: 'uint256', name: 'minParticipationRatio', type: 'uint256' },
-          { internalType: 'uint256', name: 'minApprovalRatio', type: 'uint256' },
+          { internalType: 'uint64', name: 'snapshotTimepoint', type: 'uint64' },
+          { internalType: 'uint256', name: 'minVotingPower', type: 'uint256' },
         ],
         internalType: 'struct MajorityVotingBase.ProposalParameters',
         name: 'parameters',
@@ -167,100 +140,40 @@ const TOKEN_VOTING_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-] as const;
-
-/**
- * Multisig Plugin ABI (minimal)
- * Full ABI: config/aragon-abis.ts
- */
-const MULTISIG_ABI = [
-  {
-    inputs: [],
-    name: 'proposalCount',
-    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
   {
     inputs: [{ internalType: 'uint256', name: '_proposalId', type: 'uint256' }],
-    name: 'getProposal',
-    outputs: [
-      { internalType: 'bool', name: 'executed', type: 'bool' },
-      { internalType: 'uint16', name: 'approvals', type: 'uint16' },
-      {
-        components: [
-          { internalType: 'uint16', name: 'minApprovals', type: 'uint16' },
-          { internalType: 'uint64', name: 'snapshotBlock', type: 'uint64' },
-          { internalType: 'uint64', name: 'startDate', type: 'uint64' },
-          { internalType: 'uint64', name: 'endDate', type: 'uint64' },
-        ],
-        internalType: 'struct Multisig.ProposalParameters',
-        name: 'parameters',
-        type: 'tuple',
-      },
-      {
-        components: [
-          { internalType: 'address', name: 'to', type: 'address' },
-          { internalType: 'uint256', name: 'value', type: 'uint256' },
-          { internalType: 'bytes', name: 'data', type: 'bytes' },
-        ],
-        internalType: 'struct IDAO.Action[]',
-        name: 'actions',
-        type: 'tuple[]',
-      },
-      { internalType: 'uint256', name: 'allowFailureMap', type: 'uint256' },
-    ],
+    name: 'hasSucceeded',
+    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
     stateMutability: 'view',
     type: 'function',
   },
   {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: 'uint256', name: 'proposalId', type: 'uint256' },
-      { indexed: true, internalType: 'address', name: 'creator', type: 'address' },
-      { indexed: false, internalType: 'uint64', name: 'startDate', type: 'uint64' },
-      { indexed: false, internalType: 'uint64', name: 'endDate', type: 'uint64' },
-      { indexed: false, internalType: 'bytes', name: 'metadata', type: 'bytes' },
-      {
-        components: [
-          { internalType: 'address', name: 'to', type: 'address' },
-          { internalType: 'uint256', name: 'value', type: 'uint256' },
-          { internalType: 'bytes', name: 'data', type: 'bytes' },
-        ],
-        indexed: false,
-        internalType: 'struct IDAO.Action[]',
-        name: 'actions',
-        type: 'tuple[]',
-      },
-      { indexed: false, internalType: 'uint256', name: 'allowFailureMap', type: 'uint256' },
-    ],
-    name: 'ProposalCreated',
-    type: 'event',
+    inputs: [],
+    name: 'minParticipation',
+    outputs: [{ internalType: 'uint32', name: '', type: 'uint32' }],
+    stateMutability: 'view',
+    type: 'function',
   },
 ] as const;
 
 // Rate limiting: minimum 60 seconds between syncs
 const MIN_SYNC_INTERVAL_MS = 60_000;
 
-/**
- * Sanitize string for PostgreSQL text storage
- * Removes null bytes and other invalid Unicode characters
- */
-function sanitizeForPostgres(str: string): string {
-  // Remove null bytes and other control characters that Postgres can't store
-  return str.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-}
-
 // Ankr Public tier limit: max 1,000 blocks per getLogs request
 const BLOCK_CHUNK_SIZE = BigInt(1_000);
 
-// Max blocks to process per function invocation (to avoid timeout)
-const MAX_BLOCKS_PER_CALL = BigInt(50_000);
+// Max blocks to process per function invocation (to avoid timeout).
+// All track plugins are queried in one getLogs call, so this is ~100 requests.
+const MAX_BLOCKS_PER_CALL = BigInt(100_000);
+
+/** Statuses that can still change on-chain and need refreshing */
+const NON_FINAL_STATUSES = ['PENDING', 'ACTIVE', 'SUCCEEDED'];
 
 interface ProposalData {
   proposal_id: string;  // Aragon uses 256-bit hash IDs, stored as string
   plugin_address: string;
-  plugin_type: 'SPP' | 'MULTISIG';
+  plugin_type: 'TOKEN_VOTING';
+  display_index: number;
   title: string;
   description: string;
   status: string;
@@ -274,6 +187,8 @@ interface ProposalData {
   support_threshold: number;
   min_participation: number;
   min_duration: number;
+  approvals: number;
+  min_approvals: number;
   current_stage: number;
   is_canceled: boolean;
   is_open: boolean;
@@ -281,6 +196,19 @@ interface ProposalData {
   block_number: number;
   transaction_hash: string;
   creator: string;  // Wallet address that created the proposal
+}
+
+interface OnChainProposal {
+  open: boolean;
+  executed: boolean;
+  supportThreshold: number;
+  tally: { abstain: bigint; yes: bigint; no: bigint };
+  actions: Array<{ to: string; value: bigint; data: string }>;
+}
+
+interface ProposalMetadata {
+  title: string | null;
+  description: string | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -361,8 +289,9 @@ Deno.serve(async (req: Request) => {
     const latestBlock = await publicClient.getBlockNumber();
     console.log('Latest block:', latestBlock);
 
-    // Query from last synced block
-    const startBlock = BigInt(syncState.last_synced_block);
+    // Query from last synced block; nothing to find before the plugins existed
+    const storedBlock = BigInt(syncState.last_synced_block);
+    const startBlock = storedBlock < FIRST_INDEXED_BLOCK ? FIRST_INDEXED_BLOCK : storedBlock;
 
     // Limit blocks per invocation to avoid timeout
     const targetBlock =
@@ -370,18 +299,12 @@ Deno.serve(async (req: Request) => {
 
     console.log(`Syncing from block ${startBlock} to ${targetBlock} (latest: ${latestBlock})`);
 
-    // Extract ProposalCreated events from ABIs
-    const sppProposalCreatedEvent = getAbiItem({
-      abi: STAGED_PROCESSOR_ABI,
-      name: 'ProposalCreated',
-    });
-    const multisigProposalCreatedEvent = getAbiItem({
-      abi: MULTISIG_ABI,
+    const proposalCreatedEvent = getAbiItem({
+      abi: TOKEN_VOTING_ABI,
       name: 'ProposalCreated',
     });
 
-    const allSppLogs: Array<any> = [];
-    const allMultisigLogs: Array<any> = [];
+    const allLogs: Array<any> = [];
     let currentBlock = startBlock;
     let errorCount = 0;
     const maxErrors = 10;
@@ -392,32 +315,18 @@ Deno.serve(async (req: Request) => {
         currentBlock + BLOCK_CHUNK_SIZE > targetBlock ? targetBlock : currentBlock + BLOCK_CHUNK_SIZE;
 
       try {
-        // Query SPP events
-        const sppLogs = await publicClient.getLogs({
-          address: STAGED_PROCESSOR_ADDRESS,
-          event: sppProposalCreatedEvent,
+        // One request covers every track plugin
+        const logs = await publicClient.getLogs({
+          address: [...TRACK_PLUGIN_ADDRESSES],
+          event: proposalCreatedEvent,
           fromBlock: currentBlock,
           toBlock,
           strict: true,
         });
 
-        if (sppLogs.length > 0) {
-          console.log(`Found ${sppLogs.length} SPP events in blocks ${currentBlock}-${toBlock}`);
-          allSppLogs.push(...sppLogs);
-        }
-
-        // Query Multisig events
-        const multisigLogs = await publicClient.getLogs({
-          address: MULTISIG_ADDRESS,
-          event: multisigProposalCreatedEvent,
-          fromBlock: currentBlock,
-          toBlock,
-          strict: true,
-        });
-
-        if (multisigLogs.length > 0) {
-          console.log(`Found ${multisigLogs.length} Multisig events in blocks ${currentBlock}-${toBlock}`);
-          allMultisigLogs.push(...multisigLogs);
+        if (logs.length > 0) {
+          console.log(`Found ${logs.length} ProposalCreated events in blocks ${currentBlock}-${toBlock}`);
+          allLogs.push(...logs);
         }
 
         errorCount = 0; // Reset on success
@@ -436,17 +345,24 @@ Deno.serve(async (req: Request) => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    console.log(`Found ${allSppLogs.length} SPP and ${allMultisigLogs.length} Multisig ProposalCreated events`);
+    console.log(`Found ${allLogs.length} ProposalCreated events`);
+
+    // Oldest first, so display indexes follow creation order (PAT-1, PAT-2, ...)
+    allLogs.sort((a, b) =>
+      a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : Number(a.blockNumber - b.blockNumber),
+    );
+
+    const nextDisplayIndex = await loadNextDisplayIndexes(supabase);
+    const minParticipationByPlugin = await loadMinParticipation(publicClient);
 
     // Process new proposals
-    const newProposals: ProposalData[] = [];
+    const newProposals: Array<ProposalData> = [];
 
-    // Process SPP proposals
-    for (const log of allSppLogs) {
+    for (const log of allLogs) {
+      const pluginAddress = (log.address as string).toLowerCase();
       // Keep proposalId as BigInt for contract calls, string for storage
       const proposalIdBigInt = log.args.proposalId as bigint;
       const proposalId = proposalIdBigInt.toString();  // String for DB storage (256-bit hash)
-      // Get dates from event data (not contract query - contract returns 0)
       const eventStartDate = Number(log.args.startDate);
       const eventEndDate = Number(log.args.endDate);
       const eventMetadata = log.args.metadata as string;
@@ -457,8 +373,8 @@ Deno.serve(async (req: Request) => {
         .from('proposals')
         .select('id')
         .eq('proposal_id', proposalId)
-        .eq('plugin_address', STAGED_PROCESSOR_ADDRESS.toLowerCase())
-        .single();
+        .eq('plugin_address', pluginAddress)
+        .maybeSingle();
 
       if (existing) {
         console.log(`Proposal ${proposalId} already exists, skipping`);
@@ -466,275 +382,52 @@ Deno.serve(async (req: Request) => {
       }
 
       try {
-        // Get proposal details from Staged Processor
-        const sppResult = await publicClient.readContract({
-          address: STAGED_PROCESSOR_ADDRESS,
-          abi: STAGED_PROCESSOR_ABI,
-          functionName: 'getProposal',
-          args: [proposalIdBigInt],  // Use BigInt for contract call
-        });
+        const onChain = await readProposal(publicClient, log.address, proposalIdBigInt);
+        const succeeded = await readHasSucceeded(publicClient, log.address, proposalIdBigInt);
+        const status = deriveStatus(onChain, succeeded, eventStartDate);
 
-        const sppData = sppResult as any;
-        const currentStage = Number(sppData.currentStage);
-        const executed = sppData.executed;
-        const canceled = sppData.canceled;
-        const actions = sppData.actions || [];
-
-        // NOTE: Stage 0 filter removed - now indexing ALL proposals
-        // Stage 0 = Spicy Ministers (Multisig) - waiting for approval
-        // Stage 1 = Token Voting (Public voting) - public can vote
-
-        // Get Token Voting details
-        let votingDetails: any = null;
-        try {
-          const tvResult = await publicClient.readContract({
-            address: TOKEN_VOTING_ADDRESS,
-            abi: TOKEN_VOTING_ABI,
-            functionName: 'getProposal',
-            args: [proposalIdBigInt],  // Use BigInt for contract call
-          });
-
-          votingDetails = {
-            open: (tvResult as any)[0],
-            executed: (tvResult as any)[1],
-            parameters: (tvResult as any)[2],
-            tally: (tvResult as any)[3],
-            actions: (tvResult as any)[4],
-            allowFailureMap: (tvResult as any)[5],
-            targetConfig: (tvResult as any)[6],
-          };
-        } catch (e) {
-          console.error(`Failed to get Token Voting details for proposal ${proposalId}:`, e);
-        }
-
-        // Get Multisig approval details for Stage 0
-        let multisigDetails: { approvals: number; minApprovals: number } | null = null;
-        try {
-          const msResult = await publicClient.readContract({
-            address: MULTISIG_ADDRESS,
-            abi: MULTISIG_ABI,
-            functionName: 'getProposal',
-            args: [proposalIdBigInt],
-          });
-
-          const msData = msResult as any;
-          multisigDetails = {
-            approvals: Number(msData[1] || 0),
-            minApprovals: Number(msData[2]?.minApprovals || 0),
-          };
-          console.log(`Multisig details for ${proposalId}: ${multisigDetails.approvals}/${multisigDetails.minApprovals}`);
-        } catch (e) {
-          console.error(`Failed to get Multisig details for proposal ${proposalId}:`, e);
-        }
-
-        // Derive status
-        let status = 'PENDING';
-        if (executed) {
-          status = 'EXECUTED';
-        } else if (canceled) {
-          status = 'CANCELED';
-        } else if (votingDetails) {
-          if (votingDetails.open) {
-            status = 'ACTIVE';
-          } else {
-            const yes = BigInt(votingDetails.tally.yes || 0);
-            const no = BigInt(votingDetails.tally.no || 0);
-            status = yes > no ? 'SUCCEEDED' : 'DEFEATED';
-          }
-        } else if (currentStage === 0) {
-          // Stage 0 - check multisig approval status
-          if (multisigDetails && multisigDetails.approvals >= multisigDetails.minApprovals) {
-            status = 'SUCCEEDED';
-          } else {
-            status = 'PENDING';
-          }
-        }
-
-        // Use event dates (from ProposalCreated event) - these are the correct values
-        // Contract getProposal returns 0 for lastStageTransition on new proposals
-        const startDate = new Date(eventStartDate * 1000).toISOString();
-        const endDate = new Date(eventEndDate * 1000).toISOString();
-
-        // Try to decode metadata (IPFS URL or direct content)
-        let title = `PEP Proposal #${proposalId}`;
-        let description = `Governance proposal with ${eventActions.length} action(s)`;
-        if (eventMetadata && eventMetadata.length > 2) {
-          try {
-            // Metadata is hex-encoded, use viem's hexToString to decode
-            const rawMetadata = hexToString(eventMetadata as `0x${string}`);
-            // Sanitize to remove null bytes that Postgres can't store
-            const metadataStr = sanitizeForPostgres(rawMetadata);
-            // Check if it's an IPFS URL or JSON
-            if (metadataStr.startsWith('ipfs://')) {
-              description = metadataStr; // Store IPFS URL for later resolution
-            } else if (metadataStr.startsWith('{')) {
-              const metadataJson = JSON.parse(metadataStr);
-              title = sanitizeForPostgres(metadataJson.title || title);
-              description = sanitizeForPostgres(metadataJson.description || description);
-            } else {
-              // Plain text metadata
-              title = sanitizeForPostgres(metadataStr.slice(0, 100) || title);
-            }
-          } catch (e) {
-            console.log(`Could not decode metadata for proposal ${proposalId}`);
-          }
-        }
+        const metadata = await decodeMetadata(eventMetadata);
+        const title = metadata.title || `Proposal #${nextDisplayIndex[pluginAddress]}`;
+        const description = metadata.description || `Governance proposal with ${eventActions.length} action(s)`;
 
         const proposalData: ProposalData = {
           proposal_id: proposalId,
-          plugin_address: STAGED_PROCESSOR_ADDRESS.toLowerCase(),
-          plugin_type: 'SPP',
+          plugin_address: pluginAddress,
+          plugin_type: 'TOKEN_VOTING',
+          display_index: nextDisplayIndex[pluginAddress]++,
           title,
           description,
           status,
-          start_date: startDate,
-          end_date: endDate,
-          executed_at: executed ? new Date().toISOString() : null,
-          tally_yes: votingDetails?.tally?.yes?.toString() || '0',
-          tally_no: votingDetails?.tally?.no?.toString() || '0',
-          tally_abstain: votingDetails?.tally?.abstain?.toString() || '0',
+          start_date: new Date(eventStartDate * 1000).toISOString(),
+          end_date: new Date(eventEndDate * 1000).toISOString(),
+          executed_at: onChain.executed ? new Date().toISOString() : null,
+          tally_yes: onChain.tally.yes.toString(),
+          tally_no: onChain.tally.no.toString(),
+          tally_abstain: onChain.tally.abstain.toString(),
           total_voting_power: '0',
-          support_threshold: votingDetails ? Number(votingDetails.parameters.supportThresholdRatio) : 0,
-          min_participation: votingDetails ? Number(votingDetails.parameters.minParticipationRatio) : 0,
-          min_duration: votingDetails
-            ? Number(votingDetails.parameters.endDate) - Number(votingDetails.parameters.startDate)
-            : 604800,
-          current_stage: currentStage,
-          is_canceled: canceled,
-          is_open: votingDetails?.open || false,
-          actions: actions.map((a: any) => ({
-            to: a.to,
-            value: a.value.toString(),
-            data: a.data,
-          })),
-          block_number: Number(log.blockNumber),
-          transaction_hash: log.transactionHash,
-          creator: (log.args.creator as string).toLowerCase(),
-        };
-
-        // Add multisig approval data for Stage 0
-        if (multisigDetails) {
-          (proposalData as any).approvals = multisigDetails.approvals;
-          (proposalData as any).min_approvals = multisigDetails.minApprovals;
-        }
-
-        newProposals.push(proposalData);
-      } catch (e) {
-        console.error(`Failed to process proposal ${proposalId}:`, e);
-      }
-    }
-
-    // Process Multisig proposals
-    for (const log of allMultisigLogs) {
-      // Keep proposalId as BigInt for contract calls, string for storage
-      const proposalIdBigInt = log.args.proposalId as bigint;
-      const proposalId = proposalIdBigInt.toString();  // String for DB storage (256-bit hash)
-      // Get dates from event data (not contract query - contract may return 0)
-      const eventStartDate = Number(log.args.startDate);
-      const eventEndDate = Number(log.args.endDate);
-      const eventMetadata = log.args.metadata as string;
-      const eventActions = log.args.actions as Array<{ to: string; value: bigint; data: string }>;
-
-      // Check if proposal already exists
-      const { data: existing } = await supabase
-        .from('proposals')
-        .select('id')
-        .eq('proposal_id', proposalId)
-        .eq('plugin_address', MULTISIG_ADDRESS.toLowerCase())
-        .single();
-
-      if (existing) {
-        console.log(`Multisig proposal ${proposalId} already exists, skipping`);
-        continue;
-      }
-
-      try {
-        console.log(`Processing new Multisig proposal ${proposalId}...`);
-
-        const msResult = await publicClient.readContract({
-          address: MULTISIG_ADDRESS,
-          abi: MULTISIG_ABI,
-          functionName: 'getProposal',
-          args: [proposalIdBigInt],  // Use BigInt for contract call
-        });
-
-        const executed = (msResult as any)[0];
-        const approvals = Number((msResult as any)[1]);
-        const parameters = (msResult as any)[2];
-        const actions = (msResult as any)[3] || [];
-
-        const minApprovals = Number(parameters.minApprovals);
-        // Use event dates (from ProposalCreated event) - these are the correct values
-        const startDate = new Date(eventStartDate * 1000).toISOString();
-        const endDate = new Date(eventEndDate * 1000).toISOString();
-
-        // Try to decode metadata (IPFS URL or direct content)
-        let title = `ADMIN Proposal #${proposalId}`;
-        let description = `Multisig proposal with ${eventActions.length} action(s)`;
-        if (eventMetadata && eventMetadata.length > 2) {
-          try {
-            const rawMetadata = hexToString(eventMetadata as `0x${string}`);
-            const metadataStr = sanitizeForPostgres(rawMetadata);
-            if (metadataStr.startsWith('ipfs://')) {
-              description = metadataStr;
-            } else if (metadataStr.startsWith('{')) {
-              const metadataJson = JSON.parse(metadataStr);
-              title = sanitizeForPostgres(metadataJson.title || title);
-              description = sanitizeForPostgres(metadataJson.description || description);
-            } else {
-              title = sanitizeForPostgres(metadataStr.slice(0, 100) || title);
-            }
-          } catch (e) {
-            console.log(`Could not decode metadata for Multisig proposal ${proposalId}`);
-          }
-        }
-
-        // Derive status for Multisig
-        let status = 'ACTIVE';
-        if (executed) {
-          status = 'EXECUTED';
-        } else if (Date.now() > eventEndDate * 1000) {
-          status = approvals >= minApprovals ? 'SUCCEEDED' : 'DEFEATED';
-        }
-
-        const proposalData: ProposalData = {
-          proposal_id: proposalId,
-          plugin_address: MULTISIG_ADDRESS.toLowerCase(),
-          plugin_type: 'MULTISIG',
-          title,
-          description,
-          status,
-          start_date: startDate,
-          end_date: endDate,
-          executed_at: executed ? new Date().toISOString() : null,
-          tally_yes: '0',
-          tally_no: '0',
-          tally_abstain: '0',
-          total_voting_power: '0',
-          support_threshold: 0,
-          min_participation: 0,
+          support_threshold: onChain.supportThreshold,
+          min_participation: minParticipationByPlugin[pluginAddress] ?? 0,
           min_duration: eventEndDate - eventStartDate,
+          // No multisig stage on the MainDao: proposals go straight to the community vote
+          approvals: 0,
+          min_approvals: 0,
           current_stage: 0,
           is_canceled: false,
-          is_open: !executed && Date.now() < eventEndDate * 1000,
-          actions: actions.map((a: any) => ({
-            to: a.to,
-            value: a.value.toString(),
-            data: a.data,
+          is_open: onChain.open,
+          actions: onChain.actions.map((action) => ({
+            to: action.to,
+            value: action.value.toString(),
+            data: action.data,
           })),
           block_number: Number(log.blockNumber),
           transaction_hash: log.transactionHash,
           creator: (log.args.creator as string).toLowerCase(),
         };
 
-        // Add multisig-specific fields
-        (proposalData as any).approvals = approvals;
-        (proposalData as any).min_approvals = minApprovals;
-
         newProposals.push(proposalData);
-        console.log(`Multisig proposal ${proposalId} processed (Status: ${status})`);
+        console.log(`Proposal ${proposalId} on ${pluginAddress} processed (Status: ${status})`);
       } catch (e) {
-        console.error(`Failed to process Multisig proposal ${proposalId}:`, e);
+        console.error(`Failed to process proposal ${proposalId}:`, e);
       }
     }
 
@@ -749,8 +442,12 @@ Deno.serve(async (req: Request) => {
 
       console.log(`Inserted ${newProposals.length} new proposals`);
 
-      // Trigger notifications for new proposals
-      for (const proposal of newProposals) {
+      // Notify only for proposals people can still act on: a backfill of
+      // finished proposals must not push a burst of stale notifications
+      const notifiable = newProposals.filter(
+        (proposal) => proposal.status === 'ACTIVE' || proposal.status === 'PENDING',
+      );
+      for (const proposal of notifiable) {
         try {
           await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
             method: 'POST',
@@ -770,60 +467,43 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Update existing proposals (refresh vote tallies for active ones)
-    const { data: activeProposals } = await supabase
+    // Refresh proposals whose outcome can still change (tallies, execution)
+    const { data: openProposals } = await supabase
       .from('proposals')
-      .select('proposal_id')
-      .eq('status', 'ACTIVE');
+      .select('proposal_id, plugin_address, start_date')
+      .in('plugin_address', TRACK_PLUGIN_ADDRESSES_LOWER)
+      .in('status', NON_FINAL_STATUSES);
 
     let updatedCount = 0;
-    if (activeProposals && activeProposals.length > 0) {
-      for (const prop of activeProposals) {
-        try {
-          const tvResult = await publicClient.readContract({
-            address: TOKEN_VOTING_ADDRESS,
-            abi: TOKEN_VOTING_ABI,
-            functionName: 'getProposal',
-            args: [BigInt(prop.proposal_id)],
-          });
+    for (const prop of openProposals ?? []) {
+      try {
+        const proposalIdBigInt = BigInt(prop.proposal_id);
+        const onChain = await readProposal(publicClient, prop.plugin_address, proposalIdBigInt);
+        const succeeded = await readHasSucceeded(publicClient, prop.plugin_address, proposalIdBigInt);
+        const startDate = Math.floor(new Date(prop.start_date).getTime() / 1000);
+        const status = deriveStatus(onChain, succeeded, startDate);
 
-          const votingDetails = {
-            open: (tvResult as any)[0],
-            executed: (tvResult as any)[1],
-            parameters: (tvResult as any)[2],
-            tally: (tvResult as any)[3],
-          };
+        await supabase
+          .from('proposals')
+          .update({
+            status,
+            tally_yes: onChain.tally.yes.toString(),
+            tally_no: onChain.tally.no.toString(),
+            tally_abstain: onChain.tally.abstain.toString(),
+            is_open: onChain.open,
+            executed_at: onChain.executed ? new Date().toISOString() : null,
+          })
+          .eq('proposal_id', prop.proposal_id)
+          .eq('plugin_address', prop.plugin_address);
 
-          let status = 'ACTIVE';
-          if (votingDetails.executed) {
-            status = 'EXECUTED';
-          } else if (!votingDetails.open) {
-            const yes = BigInt(votingDetails.tally.yes || 0);
-            const no = BigInt(votingDetails.tally.no || 0);
-            status = yes > no ? 'SUCCEEDED' : 'DEFEATED';
-          }
-
-          await supabase
-            .from('proposals')
-            .update({
-              status,
-              tally_yes: votingDetails.tally.yes?.toString() || '0',
-              tally_no: votingDetails.tally.no?.toString() || '0',
-              tally_abstain: votingDetails.tally.abstain?.toString() || '0',
-              is_open: votingDetails.open,
-              executed_at: votingDetails.executed ? new Date().toISOString() : null,
-            })
-            .eq('proposal_id', prop.proposal_id);
-
-          updatedCount++;
-        } catch (e) {
-          console.error(`Failed to update proposal ${prop.proposal_id}:`, e);
-        }
+        updatedCount++;
+      } catch (e) {
+        console.error(`Failed to update proposal ${prop.proposal_id}:`, e);
       }
     }
 
     // Update sync state with where we actually got to
-    const syncedToBlock = currentBlock > BigInt(1) ? currentBlock - BigInt(1) : startBlock;
+    const syncedToBlock = currentBlock > startBlock ? currentBlock - BigInt(1) : startBlock;
     const needsMoreSync = syncedToBlock < latestBlock;
 
     await supabase
@@ -894,3 +574,192 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+/**
+ * Read a proposal from its track plugin
+ */
+async function readProposal(
+  publicClient: any,
+  pluginAddress: string,
+  proposalId: bigint,
+): Promise<OnChainProposal> {
+  const result = await publicClient.readContract({
+    address: pluginAddress,
+    abi: TOKEN_VOTING_ABI,
+    functionName: 'getProposal',
+    args: [proposalId],
+  });
+
+  return {
+    open: result[0],
+    executed: result[1],
+    supportThreshold: Number(result[2].supportThreshold),
+    tally: result[3],
+    actions: result[4] ?? [],
+  };
+}
+
+/**
+ * Whether the vote passed (support threshold and participation both met).
+ * Only meaningful once the vote has closed.
+ */
+async function readHasSucceeded(
+  publicClient: any,
+  pluginAddress: string,
+  proposalId: bigint,
+): Promise<boolean> {
+  try {
+    return await publicClient.readContract({
+      address: pluginAddress,
+      abi: TOKEN_VOTING_ABI,
+      functionName: 'hasSucceeded',
+      args: [proposalId],
+    });
+  } catch (e) {
+    console.error(`hasSucceeded failed for ${proposalId}:`, e);
+    return false;
+  }
+}
+
+/**
+ * Map on-chain state to the stored status.
+ * Uses hasSucceeded rather than yes > no so quorum is respected.
+ */
+function deriveStatus(proposal: OnChainProposal, succeeded: boolean, startDate: number): string {
+  if (proposal.executed) {
+    return 'EXECUTED';
+  }
+  if (proposal.open) {
+    return 'ACTIVE';
+  }
+  if (Date.now() < startDate * 1000) {
+    return 'PENDING';
+  }
+  return succeeded ? 'SUCCEEDED' : 'DEFEATED';
+}
+
+/**
+ * Next display index per plugin (1-based, like Aragon's PAT-1, PAT-2, ...)
+ */
+async function loadNextDisplayIndexes(supabase: any): Promise<Record<string, number>> {
+  const next: Record<string, number> = {};
+  for (const address of TRACK_PLUGIN_ADDRESSES_LOWER) {
+    const { count } = await supabase
+      .from('proposals')
+      .select('id', { count: 'exact', head: true })
+      .eq('plugin_address', address);
+    next[address] = (count ?? 0) + 1;
+  }
+  return next;
+}
+
+/**
+ * minParticipation is a plugin setting (not stored on the proposal), read once per sync
+ */
+async function loadMinParticipation(publicClient: any): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  for (const address of TRACK_PLUGIN_ADDRESSES) {
+    try {
+      const value = await publicClient.readContract({
+        address,
+        abi: TOKEN_VOTING_ABI,
+        functionName: 'minParticipation',
+      });
+      result[address.toLowerCase()] = Number(value);
+    } catch (e) {
+      console.error(`minParticipation failed for ${address}:`, e);
+    }
+  }
+  return result;
+}
+
+/**
+ * Decode proposal metadata. Aragon stores an ipfs:// URI pointing at
+ * { title, summary, description (HTML), resources }; proposals created from
+ * this app store the JSON inline.
+ */
+async function decodeMetadata(rawHex: string): Promise<ProposalMetadata> {
+  if (!rawHex || rawHex.length <= 2) {
+    return { title: null, description: null };
+  }
+
+  try {
+    const metadataStr = sanitizeForPostgres(hexToString(rawHex as `0x${string}`)).trim();
+
+    if (metadataStr.startsWith('ipfs://')) {
+      const json = await fetchIpfsJson(metadataStr.slice('ipfs://'.length));
+      return json ? fromMetadataJson(json) : { title: null, description: metadataStr };
+    }
+
+    if (metadataStr.startsWith('{')) {
+      return fromMetadataJson(JSON.parse(metadataStr));
+    }
+
+    // Plain text metadata
+    return { title: metadataStr.slice(0, 100) || null, description: null };
+  } catch (e) {
+    console.log('Could not decode metadata:', e);
+    return { title: null, description: null };
+  }
+}
+
+function fromMetadataJson(json: Record<string, unknown>): ProposalMetadata {
+  const title = typeof json.title === 'string' ? sanitizeForPostgres(json.title).trim() : '';
+  const summary = typeof json.summary === 'string' ? htmlToText(json.summary) : '';
+  const body = typeof json.description === 'string' ? htmlToText(json.description) : '';
+  // The app shows one description; Aragon splits it into summary + body.
+  // Skip the summary when the body already opens with it.
+  const parts = body.startsWith(summary) ? [body] : [summary, body];
+  const description = parts.filter((part) => part.length > 0).join('\n\n');
+
+  return {
+    title: title || null,
+    description: description || null,
+  };
+}
+
+async function fetchIpfsJson(cid: string): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await fetch(`${IPFS_GATEWAY}${cid}`, {
+      signal: AbortSignal.timeout(IPFS_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.log(`IPFS fetch for ${cid} returned ${response.status}`);
+      return null;
+    }
+    return await response.json();
+  } catch (e) {
+    console.log(`IPFS fetch for ${cid} failed:`, e);
+    return null;
+  }
+}
+
+/**
+ * Aragon's editor saves rich text as HTML. The app renders plain text, so
+ * keep paragraph and list structure as line breaks and drop the markup.
+ */
+function htmlToText(html: string): string {
+  const text = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/(p|div|h[1-6]|li|ul|ol|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return sanitizeForPostgres(text);
+}
+
+/**
+ * Sanitize string for PostgreSQL text storage
+ * Removes null bytes and other invalid Unicode characters
+ */
+function sanitizeForPostgres(str: string): string {
+  return str.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
