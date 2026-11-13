@@ -1,7 +1,32 @@
 /**
  * Pepper DAO Constitution, condensed for the Thermal Pixel rulebook.
  * Source of truth for the full text: components/community/*-section.tsx
+ * Track numbers (durations, thresholds, proposer power) come from
+ * config/aragon-governance.ts so the rulebook matches the on-chain settings.
  */
+import {
+  GOVERNANCE_TRACK_RULES,
+  GOVERNANCE_TRACKS,
+  type GovernanceTrack,
+  type GovernanceTrackRules,
+} from '@/config/aragon-governance';
+
+// Declared before CONSTITUTION and VOTING_TRACKS, which read them while the module loads
+const SIMPLE_MAJORITY_PERCENT = 51;
+
+/** Longer rulebook wording per track; the short use case lives in the governance config */
+const TRACK_DESCRIPTIONS: Record<GovernanceTrack, string> = {
+  STANDARD: 'Major treasury spending, protocol parameter changes or Ministerial elections.',
+  AGILE: 'Community initiatives and minor operational adjustments.',
+  FAST: 'Critical security patches or urgent, time-sensitive treasury requests.',
+};
+
+const TRACK_TONES = {
+  STANDARD: 'violet',
+  AGILE: 'orange',
+  FAST: 'red',
+} as const satisfies Record<GovernanceTrack, string>;
+
 export interface ConstitutionArticle {
   number: string;
   title: string;
@@ -63,12 +88,11 @@ export const CONSTITUTION: Array<ConstitutionArticle> = [
     title: 'VOTING TRACKS',
     summary: 'Longer tracks for bigger decisions',
     tracks: true,
-    points: [
-      { label: 'STANDARD · 7 DAYS', text: 'Major treasury spending, protocol parameter changes or Ministerial elections.' },
-      { label: 'AGILE · 3 DAYS', text: 'Community initiatives and minor operational adjustments.' },
-      { label: 'FAST · 48H · 66%', text: 'Critical security patches or urgent, time-sensitive treasury requests.' },
-    ],
-    body: 'Submitting a formal on-chain proposal requires 1 Trillion $PEPPER — enforced by the Aragon threshold plugin.',
+    points: GOVERNANCE_TRACKS.map((track) => ({
+      label: formatTrackLabel(GOVERNANCE_TRACK_RULES[track]),
+      text: TRACK_DESCRIPTIONS[track],
+    })),
+    body: `Submitting a formal on-chain proposal requires ${formatProposerPower()} — enforced by each track's Aragon voting plugin.`,
   },
   {
     number: '06',
@@ -92,15 +116,42 @@ export const CONSTITUTION: Array<ConstitutionArticle> = [
 
 /** "At a glance" facts above the articles */
 export const GLANCE_FACTS = [
-  { label: 'TO PROPOSE', value: '1T', hint: 'vePEPPER · 10T on Fast', icon: 'vault' },
+  {
+    label: 'TO PROPOSE',
+    value: GOVERNANCE_TRACK_RULES.STANDARD.minProposerPower,
+    hint: `vePEPPER · ${GOVERNANCE_TRACK_RULES.FAST.minProposerPower} on Fast`,
+    icon: 'vault',
+  },
   { label: 'MINISTERS', value: '3', hint: 'Prime · Treasury · Publicity', icon: 'logo' },
   { label: 'MAX SUPPLY', value: '8.89Q', hint: 'PEPPER, max', icon: 'supply' },
   { label: 'BURN', value: '50%', hint: 'of every trade fee', icon: 'burn' },
 ] as const;
 
 /** Voting tracks: how long a vote runs and what it is for */
-export const VOTING_TRACKS = [
-  { label: 'STANDARD', duration: '7 DAYS', hint: 'Big spending, protocol changes, elections · 51% YES, 10% turnout', tone: 'violet' },
-  { label: 'AGILE', duration: '3 DAYS', hint: 'Community initiatives, small adjustments · 51% YES, 15% turnout', tone: 'orange' },
-  { label: 'FAST', duration: '48 HOURS', hint: 'Urgent fixes · 66% YES (supermajority), 30% turnout', tone: 'red' },
-] as const;
+export const VOTING_TRACKS = GOVERNANCE_TRACKS.map((track) => {
+  const rules = GOVERNANCE_TRACK_RULES[track];
+  const supermajority = isSupermajority(rules) ? ' (supermajority)' : '';
+  return {
+    label: rules.label,
+    duration: rules.duration,
+    hint: `${rules.useCase} · ${rules.supportPercent}% YES${supermajority}, ${rules.participationPercent}% turnout`,
+    tone: TRACK_TONES[track],
+  };
+});
+
+/** "FAST · 48 HOURS · 66%": the support share is shown only when it is a supermajority */
+function formatTrackLabel(rules: GovernanceTrackRules): string {
+  const base = `${rules.label} · ${rules.duration}`;
+  return isSupermajority(rules) ? `${base} · ${rules.supportPercent}%` : base;
+}
+
+/** "1T vePEPPER (10T on Fast)", or a single value when every track asks the same */
+function formatProposerPower(): string {
+  const standard = GOVERNANCE_TRACK_RULES.STANDARD.minProposerPower;
+  const fast = GOVERNANCE_TRACK_RULES.FAST.minProposerPower;
+  return fast === standard ? `${standard} vePEPPER` : `${standard} vePEPPER (${fast} on Fast)`;
+}
+
+function isSupermajority(rules: GovernanceTrackRules): boolean {
+  return rules.supportPercent > SIMPLE_MAJORITY_PERCENT;
+}

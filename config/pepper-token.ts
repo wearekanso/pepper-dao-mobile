@@ -4,6 +4,7 @@
  * Centralizes contract addresses and shared types used by
  * the Pepper token dashboard and related features.
  */
+import { PEPPER_DAO_GOVERNANCE_CONFIG } from './aragon-governance';
 
 /**
  * Pepper ERC-20 token contract on Chiliz Chain.
@@ -26,9 +27,9 @@ export const PEPPER_ORIGINAL_SUPPLY = BigInt(
 
 /**
  * Main DAO Treasury: the PEPPER MainDao contract itself holds the funds
- * the community votes on (Aragon DAO 0x26Ed…9213).
+ * the community votes on, so this is the DAO address from the governance config.
  */
-export const MAIN_DAO_TREASURY_ADDRESS = '0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213';
+export const MAIN_DAO_TREASURY_ADDRESS = PEPPER_DAO_GOVERNANCE_CONFIG.daoAddress;
 
 /**
  * DAO treasury addresses (the "Treasury" card: balances, 24h delta, activity).
