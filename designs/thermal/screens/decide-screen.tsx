@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { GOVERNANCE_TRACKS, type GovernanceTrack } from '@/config/aragon-governance';
+import { PROPOSAL_CREATION_ENABLED } from '@/config/features';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import type { GovernanceProposal } from '@/types/governance';
 
@@ -55,13 +56,15 @@ export function DecideScreen() {
           ))}
         </View>
         <View style={{ flex: 1 }} />
-        <PixelButton
-          label="+ NEW"
-          variant="outlineGold"
-          size="small"
-          style={{ alignSelf: 'auto' }}
-          onPress={() => router.push('/governance/create')}
-        />
+        {PROPOSAL_CREATION_ENABLED ? (
+          <PixelButton
+            label="+ NEW"
+            variant="outlineGold"
+            size="small"
+            style={{ alignSelf: 'auto' }}
+            onPress={() => router.push('/governance/create')}
+          />
+        ) : null}
       </View>
 
       {isLoading && !data ? (

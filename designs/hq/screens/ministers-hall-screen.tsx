@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { PROPOSAL_CREATION_ENABLED } from '@/config/features';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import type { GovernanceProposal, GovernanceStatus } from '@/types/governance';
 import { formatAgo, formatCountdown, shortenKey } from '@/designs/thermal/lib/format';
@@ -38,11 +39,11 @@ export function MinistersHallScreen() {
       header={{
         floor: '3F',
         title: 'MINISTERS HALL',
-        right: (
+        right: PROPOSAL_CREATION_ENABLED ? (
           <Touchable onPress={() => router.push('/governance/create')} style={styles.newButton} hitSlop={6}>
             <Text style={TYPE.display20}>+ NEW</Text>
           </Touchable>
-        ),
+        ) : undefined,
       }}
       banner={HQ_IMAGES.ministers}
       refreshing={isRefetching}
