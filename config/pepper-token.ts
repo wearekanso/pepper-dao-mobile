@@ -4,7 +4,7 @@
  * Centralizes contract addresses and shared types used by
  * the Pepper token dashboard and related features.
  */
-import { PEPPER_DAO_GOVERNANCE_CONFIG } from './aragon-governance';
+import { PEPPER_DAO_GOVERNANCE_CONFIG, VEPEPPER_ESCROW_ADDRESS } from './aragon-governance';
 
 /**
  * Pepper ERC-20 token contract on Chiliz Chain.
@@ -50,9 +50,11 @@ export const DAO_TREASURY_ADDRESSES: Array<string> = [
  */
 export const PEPPER_BURN_ADDRESSES: Array<string> = [];
 
-export const PEPPER_STAKING_CONTRACT_ADDRESSES: Array<string> = [
-  '0x5cA4C88339D89B2547a001003Cca84F62F557A72', // This is the staking contract address
-];
+/**
+ * Where staked PEPPER is counted: the vePEPPER voting escrow. The old staking
+ * contract (0x5cA4…, config/staking.ts) no longer gives voting power.
+ */
+export const PEPPER_STAKING_CONTRACT_ADDRESSES: Array<string> = [VEPEPPER_ESCROW_ADDRESS];
 
 /** Staking contract shown in the dashboard's Staked info sheet */
 export const PEPPER_STAKING_CONTRACT_ADDRESS = PEPPER_STAKING_CONTRACT_ADDRESSES[0];

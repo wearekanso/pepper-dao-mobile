@@ -47,6 +47,12 @@ export const PEPPER_DAO_GOVERNANCE_CONFIG: AragonGovernanceConfig = {
   firstIndexedBlock: 34_100_000,
 };
 
+/** vePEPPER voting escrow: holds every PEPPER locked for voting power */
+export const VEPEPPER_ESCROW_ADDRESS = '0x7770aA967Bd18d64A23c86DFB01efFCE67919C1C';
+
+/** The DAO on Aragon, where PEPPER is locked as vePEPPER until the in-app flow ships */
+export const ARAGON_DAO_URL = `https://app.aragon.org/dao/${PEPPER_DAO_GOVERNANCE_CONFIG.daoNetworkKey}/${PEPPER_DAO_GOVERNANCE_CONFIG.daoAddress}/dashboard`;
+
 /** Track plugin addresses, for indexing and lookups */
 export const GOVERNANCE_TRACK_PLUGIN_ADDRESSES: Array<`0x${string}`> = Object.values(
   PEPPER_DAO_GOVERNANCE_CONFIG.trackPlugins,
