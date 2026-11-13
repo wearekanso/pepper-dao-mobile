@@ -154,6 +154,13 @@ const TOKEN_VOTING_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [{ internalType: 'uint256', name: '_timePoint', type: 'uint256' }],
+    name: 'totalVotingPower',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 // Rate limiting: minimum 60 seconds between syncs
@@ -165,6 +172,19 @@ const BLOCK_CHUNK_SIZE = BigInt(1_000);
 // Max blocks to process per function invocation (to avoid timeout).
 // All track plugins are queried in one getLogs call, so this is ~100 requests.
 const MAX_BLOCKS_PER_CALL = BigInt(100_000);
+
+// Edge functions are killed at the wall-clock limit (150s on the free plan)
+// without running any cleanup. Each phase stops on its own well before that,
+// saves how far it got and releases the lock; the next run carries on.
+const LOG_SCAN_BUDGET_MS = 60_000;
+const PROCESS_BUDGET_MS = 100_000;
+const REFRESH_BUDGET_MS = 120_000;
+
+// A lock older than this belongs to a run that was killed: take it over.
+// The platform kills a run at 150s, so anything past ~3 min is certainly dead.
+const STALE_LOCK_MS = 3 * 60_000;
+// Push notifications are sent together, each capped, so they can't push a run past the limit
+const NOTIFICATION_TIMEOUT_MS = 5_000;
 
 /** Statuses that can still change on-chain and need refreshing */
 const NON_FINAL_STATUSES = ['PENDING', 'ACTIVE', 'SUCCEEDED'];
@@ -183,7 +203,8 @@ interface ProposalData {
   tally_yes: string;
   tally_no: string;
   tally_abstain: string;
-  total_voting_power: string;
+  /** null when the snapshot total could not be read; a later run fills it in */
+  total_voting_power: string | null;
   support_threshold: number;
   min_participation: number;
   min_duration: number;
@@ -202,8 +223,18 @@ interface OnChainProposal {
   open: boolean;
   executed: boolean;
   supportThreshold: number;
+  /** Timepoint (timestamp clock) voting power is measured at */
+  snapshotTimepoint: bigint;
   tally: { abstain: bigint; yes: bigint; no: bigint };
   actions: Array<{ to: string; value: bigint; data: string }>;
+}
+
+interface FailedProposal {
+  proposalId: string;
+  blockNumber: bigint;
+  reason: string;
+  /** Stopped to stay inside the time limit: normal progress, not an error */
+  isTimeBudget: boolean;
 }
 
 interface ProposalMetadata {
@@ -222,6 +253,11 @@ Deno.serve(async (req: Request) => {
       },
     });
   }
+
+  const runStartedAt = Date.now();
+  const elapsedMs = () => Date.now() - runStartedAt;
+  // Only the run that took the lock may release it on failure
+  let lockAcquired = false;
 
   try {
     // Initialize Supabase client with service role key
@@ -244,13 +280,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Check if sync is already in progress
-    if (syncState.sync_in_progress) {
-      return new Response(JSON.stringify({ message: 'Sync already in progress', skipped: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    // Rate limiting below needs the row; the lock itself is taken atomically further down
 
     // Rate limiting check
     const lastSyncAt = syncState.last_sync_at ? new Date(syncState.last_sync_at).getTime() : 0;
@@ -273,11 +303,32 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Mark sync as in progress
-    await supabase
+    // Take the lock in one conditional update, so two runs can't both get it.
+    // It is free when no run holds it, or when the holder started so long ago
+    // that it must have been killed before it could release it.
+    const staleBefore = new Date(Date.now() - STALE_LOCK_MS).toISOString();
+    const { data: lockRows, error: lockError } = await supabase
       .from('sync_state')
-      .update({ sync_in_progress: true, error_message: null })
-      .eq('id', 'default');
+      .update({ sync_in_progress: true, sync_started_at: new Date().toISOString(), error_message: null })
+      .eq('id', 'default')
+      .or(
+        `sync_in_progress.is.null,sync_in_progress.eq.false,sync_started_at.is.null,sync_started_at.lt."${staleBefore}"`,
+      )
+      .select('id');
+
+    if (lockError) {
+      throw lockError;
+    }
+    if (!lockRows || lockRows.length === 0) {
+      return new Response(JSON.stringify({ message: 'Sync already in progress', skipped: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    lockAcquired = true;
+    if (syncState.sync_in_progress) {
+      console.warn(`Took over a stale sync lock (started ${syncState.sync_started_at ?? 'unknown'})`);
+    }
 
     // Initialize viem client
     const publicClient = createPublicClient({
@@ -310,7 +361,7 @@ Deno.serve(async (req: Request) => {
     const maxErrors = 10;
 
     // Query logs in chunks of 1000 blocks (Ankr Public tier limit)
-    while (currentBlock < targetBlock && errorCount < maxErrors) {
+    while (currentBlock < targetBlock && errorCount < maxErrors && elapsedMs() < LOG_SCAN_BUDGET_MS) {
       const toBlock =
         currentBlock + BLOCK_CHUNK_SIZE > targetBlock ? targetBlock : currentBlock + BLOCK_CHUNK_SIZE;
 
@@ -360,9 +411,21 @@ Deno.serve(async (req: Request) => {
     // First proposal that could not be read: indexing stops there so the
     // next run retries it, instead of skipping it for good and shifting the
     // display indexes of every later proposal on the same track
-    let failedProposal: { proposalId: string; blockNumber: bigint; reason: string } | null = null;
+    let failedProposal: FailedProposal | null = null;
 
     for (const log of allLogs) {
+      if (elapsedMs() > PROCESS_BUDGET_MS) {
+        // Out of time: same as a failed read, the next run resumes at this block
+        failedProposal = {
+          proposalId: (log.args.proposalId as bigint).toString(),
+          blockNumber: log.blockNumber as bigint,
+          reason: 'time budget reached, continuing next run',
+          isTimeBudget: true,
+        };
+        console.log(`Time budget reached at block ${log.blockNumber}, stopping`);
+        break;
+      }
+
       const pluginAddress = (log.address as string).toLowerCase();
       // Keep proposalId as BigInt for contract calls, string for storage
       const proposalIdBigInt = log.args.proposalId as bigint;
@@ -386,11 +449,18 @@ Deno.serve(async (req: Request) => {
       }
 
       try {
-        const onChain = await readProposal(publicClient, log.address, proposalIdBigInt);
-        const succeeded = await readHasSucceeded(publicClient, log.address, proposalIdBigInt);
+        // Independent reads run together to stay inside the time limit.
+        // Participation is measured against all vePEPPER at the snapshot; it
+        // never changes afterwards, so it is read once (or filled in later).
+        const [{ onChain, totalVotingPower }, succeeded, metadata] = await Promise.all([
+          readProposal(publicClient, log.address, proposalIdBigInt).then(async (proposal) => ({
+            onChain: proposal,
+            totalVotingPower: await tryReadTotalVotingPower(publicClient, log.address, proposal.snapshotTimepoint),
+          })),
+          readHasSucceeded(publicClient, log.address, proposalIdBigInt),
+          decodeMetadata(eventMetadata),
+        ]);
         const status = deriveStatus(onChain, succeeded, eventStartDate);
-
-        const metadata = await decodeMetadata(eventMetadata);
         const title = metadata.title || `Proposal #${nextDisplayIndex[pluginAddress]}`;
         const description = metadata.description || `Governance proposal with ${eventActions.length} action(s)`;
 
@@ -408,7 +478,7 @@ Deno.serve(async (req: Request) => {
           tally_yes: onChain.tally.yes.toString(),
           tally_no: onChain.tally.no.toString(),
           tally_abstain: onChain.tally.abstain.toString(),
-          total_voting_power: '0',
+          total_voting_power: totalVotingPower?.toString() ?? null,
           support_threshold: onChain.supportThreshold,
           min_participation: minParticipationByPlugin[pluginAddress] ?? 0,
           min_duration: eventEndDate - eventStartDate,
@@ -433,7 +503,7 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         console.error(`Failed to process proposal ${proposalId}, stopping here to retry next run:`, reason);
-        failedProposal = { proposalId, blockNumber: log.blockNumber as bigint, reason };
+        failedProposal = { proposalId, blockNumber: log.blockNumber as bigint, reason, isTimeBudget: false };
         break;
       }
     }
@@ -454,41 +524,56 @@ Deno.serve(async (req: Request) => {
       const notifiable = newProposals.filter(
         (proposal) => proposal.status === 'ACTIVE' || proposal.status === 'PENDING',
       );
-      for (const proposal of notifiable) {
-        try {
-          await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              type: 'new_proposal',
-              proposalId: proposal.proposal_id,
-              title: proposal.title,
-            }),
-          });
-        } catch (e) {
-          console.error(`Failed to send notification for proposal ${proposal.proposal_id}:`, e);
-        }
-      }
+      await Promise.all(
+        notifiable.map(async (proposal) => {
+          try {
+            await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                type: 'new_proposal',
+                proposalId: proposal.proposal_id,
+                title: proposal.title,
+              }),
+              signal: AbortSignal.timeout(NOTIFICATION_TIMEOUT_MS),
+            });
+          } catch (e) {
+            console.error(`Failed to send notification for proposal ${proposal.proposal_id}:`, e);
+          }
+        }),
+      );
     }
 
     // Refresh proposals whose outcome can still change (tallies, execution)
     const { data: openProposals } = await supabase
       .from('proposals')
-      .select('proposal_id, plugin_address, start_date')
+      .select('proposal_id, plugin_address, start_date, total_voting_power, executed_at')
       .in('plugin_address', TRACK_PLUGIN_ADDRESSES_LOWER)
       .in('status', NON_FINAL_STATUSES);
 
     let updatedCount = 0;
     for (const prop of openProposals ?? []) {
+      // Refreshing is repeated every run, so it is fine to leave the rest for next time
+      if (elapsedMs() > REFRESH_BUDGET_MS) {
+        console.log('Time budget reached, leaving remaining refreshes for the next run');
+        break;
+      }
       try {
         const proposalIdBigInt = BigInt(prop.proposal_id);
-        const onChain = await readProposal(publicClient, prop.plugin_address, proposalIdBigInt);
-        const succeeded = await readHasSucceeded(publicClient, prop.plugin_address, proposalIdBigInt);
+        const [onChain, succeeded] = await Promise.all([
+          readProposal(publicClient, prop.plugin_address, proposalIdBigInt),
+          readHasSucceeded(publicClient, prop.plugin_address, proposalIdBigInt),
+        ]);
         const startDate = Math.floor(new Date(prop.start_date).getTime() / 1000);
         const status = deriveStatus(onChain, succeeded, startDate);
+        // Fill in a snapshot total that could not be read when the row was inserted
+        const missingTotal = prop.total_voting_power === null;
+        const totalVotingPower = missingTotal
+          ? await tryReadTotalVotingPower(publicClient, prop.plugin_address, onChain.snapshotTimepoint)
+          : null;
 
         await supabase
           .from('proposals')
@@ -498,7 +583,9 @@ Deno.serve(async (req: Request) => {
             tally_no: onChain.tally.no.toString(),
             tally_abstain: onChain.tally.abstain.toString(),
             is_open: onChain.open,
-            executed_at: onChain.executed ? new Date().toISOString() : null,
+            // First run that sees the execution records it; later runs keep that time
+            ...(onChain.executed && !prop.executed_at ? { executed_at: new Date().toISOString() } : {}),
+            ...(totalVotingPower !== null ? { total_voting_power: totalVotingPower.toString() } : {}),
           })
           .eq('proposal_id', prop.proposal_id)
           .eq('plugin_address', prop.plugin_address);
@@ -522,9 +609,11 @@ Deno.serve(async (req: Request) => {
         last_synced_block: Number(syncedToBlock),
         last_sync_at: new Date().toISOString(),
         sync_in_progress: false,
-        error_message: failedProposal
-          ? `Proposal ${failedProposal.proposalId} at block ${failedProposal.blockNumber} not indexed yet: ${failedProposal.reason}`.slice(0, 500)
-          : null,
+        // A time-budget stop is normal progress during a backfill, not an error
+        error_message:
+          failedProposal && !failedProposal.isTimeBudget
+            ? `Proposal ${failedProposal.proposalId} at block ${failedProposal.blockNumber} not indexed yet: ${failedProposal.reason}`.slice(0, 500)
+            : null,
       })
       .eq('id', 'default');
 
@@ -555,21 +644,24 @@ Deno.serve(async (req: Request) => {
         : String(error);
     console.error('Sync error:', errorMessage, error);
 
-    // Try to update sync state with error
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Release the lock and record the error only if this run holds the lock;
+    // a run that failed before taking it must not free another run's lock
+    if (lockAcquired) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      await supabase
-        .from('sync_state')
-        .update({
-          sync_in_progress: false,
-          error_message: errorMessage.slice(0, 500),  // Truncate for DB
-        })
-        .eq('id', 'default');
-    } catch (e) {
-      console.error('Failed to update sync state with error:', e);
+        await supabase
+          .from('sync_state')
+          .update({
+            sync_in_progress: false,
+            error_message: errorMessage.slice(0, 500),  // Truncate for DB
+          })
+          .eq('id', 'default');
+      } catch (e) {
+        console.error('Failed to update sync state with error:', e);
+      }
     }
 
     return new Response(
@@ -606,9 +698,36 @@ async function readProposal(
     open: result[0],
     executed: result[1],
     supportThreshold: Number(result[2].supportThreshold),
+    snapshotTimepoint: result[2].snapshotTimepoint,
     tally: result[3],
     actions: result[4] ?? [],
   };
+}
+
+/**
+ * All voting power (vePEPPER) at a proposal's snapshot: the denominator
+ * TokenVoting uses for minParticipation. It is display-only, so a failed
+ * read returns null instead of stopping indexing; the refresh loop retries
+ * while the proposal is not final. A real 0 is returned as is (the app
+ * treats it as unknown) so it is not retried forever.
+ */
+async function tryReadTotalVotingPower(
+  publicClient: any,
+  pluginAddress: string,
+  snapshotTimepoint: bigint,
+): Promise<bigint | null> {
+  try {
+    const total: bigint = await publicClient.readContract({
+      address: pluginAddress,
+      abi: TOKEN_VOTING_ABI,
+      functionName: 'totalVotingPower',
+      args: [snapshotTimepoint],
+    });
+    return total;
+  } catch (e) {
+    console.warn(`Could not read total voting power on ${pluginAddress}:`, e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 /**

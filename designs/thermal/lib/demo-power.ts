@@ -81,7 +81,7 @@ export function createDemoActivities(): Array<Activity> {
       total_after: total,
       rank_before: eventType === 'RANK_UP' ? 'OBSERVER' : null,
       rank_after: eventType === 'RANK_UP' ? 'MEMBER' : null,
-      proposal_id: eventType === 'FIRST_VOTE' ? 1 : null,
+      proposal_id: eventType === 'FIRST_VOTE' ? '1' : null,
       streak_id: null,
       metadata: eventType === 'STREAK_MILESTONE' ? { weeks: 2 } : {},
       created_at: new Date(now - daysAgo * DAY_MS).toISOString(),

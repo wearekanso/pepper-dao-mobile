@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useWallet } from '@/contexts/wallet-context';
 import { useGovernanceProposal } from '@/hooks/use-governance';
+import { refreshProposals } from '@/services/governance-api';
 import {
   basisPointsToPercentage,
   calculateCurrentSupport,
@@ -47,11 +48,24 @@ import { INK, STATUS_COLORS, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme'
  */
 export function ProposalDetailScreen() {
   const router = useRouter();
-  const { proposalId, fail } = useLocalSearchParams<{ proposalId: string; fail?: string }>();
+  const { proposalId, fail, created, tx } = useLocalSearchParams<{
+    proposalId: string;
+    fail?: string;
+    created?: string;
+    tx?: string;
+  }>();
   const isDemo = isDemoProposalId(proposalId);
   const demoProposal = useMemo(() => (isDemo ? createDemoProposal() : null), [isDemo]);
-  const query = useGovernanceProposal({ proposalId: isDemo ? undefined : proposalId });
+  // Just submitted from New Proposal: it exists on-chain but may not be indexed yet
+  const isJustCreated = created === '1';
+  const [isIndexingTimedOut, setIndexingTimedOut] = useState(false);
+  const query = useGovernanceProposal({
+    proposalId: isDemo ? undefined : proposalId,
+    pollWhileMissing: isJustCreated && !isIndexingTimedOut,
+  });
   const proposal = demoProposal ?? query.data;
+  // Nudge the indexer only while the new proposal is still missing
+  useIndexingNudges(isJustCreated && !proposal, setIndexingTimedOut);
   const { refetch, isRefetching } = query;
   const isLoading = !isDemo && query.isLoading;
   const isError = !isDemo && query.isError;
@@ -119,7 +133,15 @@ export function ProposalDetailScreen() {
         />
       ) : null}
 
-      {!isLoading && !isError && !proposal ? (
+      {!isLoading && !isError && !proposal && isJustCreated ? (
+        <IndexingPanel
+          txHash={tx || null}
+          timedOut={isIndexingTimedOut}
+          onBackToDecide={() => router.replace('/governance')}
+        />
+      ) : null}
+
+      {!isLoading && !isError && !proposal && !isJustCreated ? (
         <Panel>
           <Text style={TYPE.display24}>Proposal not found</Text>
         </Panel>
@@ -553,6 +575,61 @@ function CouncilPanel({ proposal }: { proposal: GovernanceProposal }) {
   );
 }
 
+/**
+ * Shown right after New Proposal while the indexer catches up: the proposal
+ * is on-chain already, Supabase just hasn't stored it yet.
+ */
+function IndexingPanel({ txHash, timedOut, onBackToDecide }: IndexingPanelProps) {
+  return (
+    <Panel>
+      <StatusTag label={timedOut ? 'STILL SYNCING' : 'SUBMITTED'} status={timedOut ? 'upcoming' : 'positive'} />
+      <View style={[styles.row, { gap: 10 }]}>
+        {timedOut ? null : <ActivityIndicator color={THERMAL_COLORS.gold} />}
+        <Text style={[TYPE.display24, { flexShrink: 1 }]}>
+          {timedOut ? 'Taking longer than usual' : 'Your proposal is on-chain'}
+        </Text>
+      </View>
+      <Text style={[TYPE.body14, { color: INK.muted }]}>
+        {timedOut
+          ? 'It is safe on Chiliz. It will show up in Decide as soon as the sync catches up.'
+          : 'It shows up here in a moment, once it is synced.'}
+      </Text>
+      {txHash ? (
+        <ChevronLink label="VIEW TRANSACTION" onPress={() => void Linking.openURL(`${EXPLORER_URL}/tx/${txHash}`)} />
+      ) : null}
+      {timedOut ? <PixelButton label="BACK TO DECIDE >" variant="outlineGold" onPress={onBackToDecide} /> : null}
+    </Panel>
+  );
+}
+
+/**
+ * While a just-created proposal is missing, nudges the indexer right away and
+ * then every SYNC_NUDGE_MS (it skips calls within 60s of the last), and marks
+ * it timed out after INDEXING_TIMEOUT_MS. Stops as soon as the proposal shows up.
+ */
+function useIndexingNudges(isWaiting: boolean, setTimedOut: (timedOut: boolean) => void): void {
+  useEffect(() => {
+    if (!isWaiting) return;
+    const nudgeIndexer = () => void refreshProposals().catch(() => undefined);
+    nudgeIndexer();
+    const nudge = setInterval(nudgeIndexer, SYNC_NUDGE_MS);
+    const timeout = setTimeout(() => {
+      setTimedOut(true);
+      clearInterval(nudge);
+    }, INDEXING_TIMEOUT_MS);
+    return () => {
+      clearInterval(nudge);
+      clearTimeout(timeout);
+    };
+  }, [isWaiting, setTimedOut]);
+}
+
+interface IndexingPanelProps {
+  txHash: string | null;
+  timedOut: boolean;
+  onBackToDecide: () => void;
+}
+
 interface FreshVote {
   option: Exclude<VoteOption, 'NONE'>;
   txHash: string;
@@ -577,6 +654,8 @@ const SUMMARY_PREVIEW_CHARS = 220;
 const DOCK_HEIGHT = 128;
 /** Dock buttons start 36pt down; the fade above them is the only see-through part */
 const DOCK_BUTTONS_TOP = 36;
+const INDEXING_TIMEOUT_MS = 2 * 60_000;
+const SYNC_NUDGE_MS = 30_000;
 const EXPLORER_URL = 'https://chiliscan.com';
 
 const styles = StyleSheet.create({

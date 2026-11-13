@@ -93,11 +93,13 @@ function transformProposal(proposal: Proposal): GovernanceProposal {
   const status = mapStatus(proposal.status);
   const type = mapPluginType(proposal.plugin_type);
 
-  // Calculate total voting power from tally
-  const yes = BigInt(proposal.tally_yes || '0');
-  const no = BigInt(proposal.tally_no || '0');
-  const abstain = BigInt(proposal.tally_abstain || '0');
-  const totalVotingPower = (yes + no + abstain).toString();
+  // All vePEPPER at the proposal's snapshot, stored by the indexer. Unknown
+  // (null / '0') means participation can't be computed, so it is left out
+  // and the UI hides the turnout row rather than showing 0% or 100%.
+  const totalVotingPower =
+    proposal.total_voting_power && /^\d+$/.test(proposal.total_voting_power) && BigInt(proposal.total_voting_power) > 0n
+      ? proposal.total_voting_power
+      : undefined;
 
   const track = getTrackForPlugin(proposal.plugin_address);
 
@@ -285,7 +287,8 @@ export async function fetchGovernanceProposalById(
       .select('*')
       .in('plugin_address', INDEXED_PLUGIN_ADDRESSES)
       .eq('proposal_id', proposalId)
-      .single();
+      // No row is a normal answer (not indexed yet, or a stale link), not an error
+      .maybeSingle();
 
     if (error) {
       console.error('[Governance API] Supabase error:', error);

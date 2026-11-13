@@ -165,7 +165,11 @@ export function CreateProposalScreen() {
     });
 
     if (submitResult.status === 'success' && submitResult.proposalId) {
-      router.replace({ pathname: '/governance/[proposalId]', params: { proposalId: submitResult.proposalId } });
+      // The indexer needs a moment: the detail screen waits for it instead of erroring
+      router.replace({
+        pathname: '/governance/[proposalId]',
+        params: { proposalId: submitResult.proposalId, created: '1', tx: submitResult.txHash ?? '' },
+      });
     }
   }
 

@@ -115,8 +115,9 @@ function VotingPreview(props: VotingPreviewProps) {
     );
   }
 
-  // For non-PEP proposals with voting data
-  if (!proposal.tally || !proposal.votingSettings || !proposal.totalVotingPower) {
+  // For non-PEP proposals with voting data. The snapshot total can be
+  // unknown; then the bar and support still show, only participation is left out.
+  if (!proposal.tally || !proposal.votingSettings) {
     return null;
   }
 
@@ -133,9 +134,9 @@ function VotingPreview(props: VotingPreviewProps) {
   const supportPercent = basisPointsToPercentage(
     calculateCurrentSupport(proposal.tally),
   );
-  const participationPercent = basisPointsToPercentage(
-    calculateParticipation(proposal.tally, proposal.totalVotingPower),
-  );
+  const participationPercent = proposal.totalVotingPower
+    ? basisPointsToPercentage(calculateParticipation(proposal.tally, proposal.totalVotingPower))
+    : null;
 
   return (
     <View className="mt-2 border-t-2 border-white/20 pt-2">
@@ -152,8 +153,12 @@ function VotingPreview(props: VotingPreviewProps) {
       </View>
       <View className="flex-row items-center gap-3">
         <Text className="text-[9px] text-white/60">{supportPercent.toFixed(0)}% Support</Text>
-        <Text className="text-[9px] text-white/60">•</Text>
-        <Text className="text-[9px] text-white/60">{participationPercent.toFixed(0)}% Participation</Text>
+        {participationPercent !== null ? (
+          <>
+            <Text className="text-[9px] text-white/60">•</Text>
+            <Text className="text-[9px] text-white/60">{participationPercent.toFixed(0)}% Participation</Text>
+          </>
+        ) : null}
       </View>
     </View>
   );
