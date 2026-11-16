@@ -1,4 +1,3 @@
-import type { ProposerEligibility } from '@/types/proposal-form';
 import type { Activity, Profile } from '@/types/user';
 
 import { DEMO_VOTE_ENABLED } from './demo-vote';
@@ -11,18 +10,6 @@ import { DEMO_VOTE_ENABLED } from './demo-vote';
 export function isDemoPower(param: string | Array<string> | undefined): boolean {
   return DEMO_VOTE_ENABLED && param === '1';
 }
-
-/**
- * Dev-only eligibility for New Proposal: `pepperdao://governance/create?demo=noteligible`
- * (or `=eligible`) shows that state with the demo wallet's 12,000 vePEPPER.
- */
-export function getDemoEligibility(param: string | Array<string> | undefined): ProposerEligibility | null {
-  if (!DEMO_VOTE_ENABLED || (param !== 'noteligible' && param !== 'eligible')) return null;
-  const minRequired = BigInt(param === 'eligible' ? 10_000 : 1_000_000_000_000) * WEI;
-  return { userPower: BigInt(DEMO_WALLET.vePepper) * WEI, minRequired, isEligible: param === 'eligible' };
-}
-
-const WEI = BigInt(10) ** BigInt(18);
 
 /** Dev-only wallet state for Pulse: `pepperdao://?demo=wrongnetwork` */
 export function isDemoWrongNetwork(param: string | Array<string> | undefined): boolean {

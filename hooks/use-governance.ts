@@ -32,15 +32,10 @@ export function useGovernanceProposals(options?: UseGovernanceProposalsOptions) 
 interface UseGovernanceProposalOptions {
   proposalId: string | undefined;
   enabled?: boolean;
-  /**
-   * Refetch every few seconds while the proposal isn't in Supabase yet
-   * (just created, waiting for the indexer)
-   */
-  pollWhileMissing?: boolean;
 }
 
 export function useGovernanceProposal(options: UseGovernanceProposalOptions) {
-  const { proposalId, enabled = true, pollWhileMissing = false } = options;
+  const { proposalId, enabled = true } = options;
 
   return useQuery<GovernanceProposal | null>({
     queryKey: ['governance', 'proposal', proposalId],
@@ -53,10 +48,8 @@ export function useGovernanceProposal(options: UseGovernanceProposalOptions) {
     enabled: enabled && Boolean(proposalId),
     staleTime: 60_000, // 1 minute - per documentation
     gcTime: 300_000, // 5 minutes cache retention
-    refetchInterval: (query) => (pollWhileMissing && query.state.data === null ? MISSING_POLL_MS : false),
   });
 }
 
-const MISSING_POLL_MS = 5_000;
 
 

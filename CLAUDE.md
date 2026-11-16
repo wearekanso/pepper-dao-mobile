@@ -47,7 +47,7 @@ SafeAreaProvider > AppKitProvider > QueryClientProvider > UserProvider > Onboard
 1. `sync-proposals` Edge Function indexes blockchain events into Supabase `proposals` table
 2. Mobile app fetches from Supabase (fast reads) via `services/governance-api.ts`
 3. `useGovernanceProposals` hook wraps the API with TanStack Query caching
-4. On-chain voting and proposal creation call the proposal's track plugin directly via `services/voting-api.ts` and `services/proposal-api.ts`. Proposal IDs are 256-bit: keep them as strings/BigInt, never `parseInt`
+4. On-chain voting calls the proposal's track plugin directly via `services/voting-api.ts`. Proposals are created on Aragon, not in the app. Proposal IDs are 256-bit: keep them as strings/BigInt, never `parseInt`
 
 ### Directory Structure
 - `app/` - Expo Router file-based routes (tabs, modals, deep links)

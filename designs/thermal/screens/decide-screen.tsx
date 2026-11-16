@@ -4,12 +4,10 @@ import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { GOVERNANCE_TRACKS, type GovernanceTrack } from '@/config/aragon-governance';
-import { PROPOSAL_CREATION_ENABLED } from '@/config/features';
 import { useGovernanceProposals } from '@/hooks/use-governance';
 import type { GovernanceProposal } from '@/types/governance';
 
 import { ChevronLink, FilterChip, LiveMarker, SectionLabel } from '../components/atoms';
-import { PixelButton } from '../components/pixel-button';
 import { EndedList, LiveProposalPanel } from '../components/proposal-panels';
 import { EmptyCard, ErrorCard, SkeletonCard } from '../components/state-cards';
 import { TabHeader } from '../components/tab-header';
@@ -49,22 +47,9 @@ export function DecideScreen() {
       />
 
       <View style={[styles.row, { gap: 8 }]}>
-        {/* Four chips + NEW only fit a 402pt-wide screen with a tighter gap */}
-        <View style={[styles.row, { gap: 6 }]}>
-          {FILTERS.map((item) => (
-            <FilterChip key={item} label={item} isActive={filter === item} onPress={() => setFilter(item)} />
-          ))}
-        </View>
-        <View style={{ flex: 1 }} />
-        {PROPOSAL_CREATION_ENABLED ? (
-          <PixelButton
-            label="+ NEW"
-            variant="outlineGold"
-            size="small"
-            style={{ alignSelf: 'auto' }}
-            onPress={() => router.push('/governance/create')}
-          />
-        ) : null}
+        {FILTERS.map((item) => (
+          <FilterChip key={item} label={item} isActive={filter === item} onPress={() => setFilter(item)} />
+        ))}
       </View>
 
       {isLoading && !data ? (
