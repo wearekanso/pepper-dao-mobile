@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import {
   BUYBACK_WALLET_ADDRESS,
   PEPPER_BURN_ADDRESSES,
+  PEPPER_RETIRED_HOLDER_ADDRESSES,
   PEPPER_STAKING_CONTRACT_ADDRESSES,
   PEPPER_TREASURY_WALLET_ADDRESS,
   PepperTokenMetrics,
@@ -33,8 +34,9 @@ export function calculateCirculatingSupply(
   burnedAmount: bigint,
   stakedAmount: bigint,
   treasuryBalance: bigint,
+  retiredHolderAmount: bigint,
 ): bigint {
-  const circulating = totalSupply - burnedAmount - stakedAmount - treasuryBalance;
+  const circulating = totalSupply - burnedAmount - stakedAmount - treasuryBalance - retiredHolderAmount;
 
   if (circulating < BigInt(0)) {
     return BigInt(0);
@@ -53,6 +55,7 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     treasuryChzDelta,
     pepperTreasuryChzBalances,
     buybackChzBalances,
+    retiredHolderBalances,
   ] = await Promise.all([
     fetchPepperTokenMetadata(),
     fetchPepperTreasuryBalances(),
@@ -62,6 +65,8 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     fetchTreasuryChz24hDelta(),
     fetchNativeBalances([PEPPER_TREASURY_WALLET_ADDRESS]),
     fetchNativeBalances([BUYBACK_WALLET_ADDRESS]),
+    // Old staking contract and old treasury: out of circulation, not on a card
+    fetchPepperBalances(PEPPER_RETIRED_HOLDER_ADDRESSES),
   ]);
 
   const treasuryBalance = sumBalances<PepperAddressBalance>(treasuryBalances);
@@ -82,6 +87,7 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     burnedAmount,
     stakedAmount,
     treasuryBalance,
+    sumBalances<PepperAddressBalance>(retiredHolderBalances),
   );
 
   return {

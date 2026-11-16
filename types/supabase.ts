@@ -48,6 +48,9 @@ export interface Database {
           creator: string | null;
           /** ipfs:// URI still to fetch; title/description are placeholders until then */
           metadata_pending_uri: string | null;
+          /** Failed IPFS retries so far; retrying stops at a fixed limit */
+          metadata_attempts: number;
+          metadata_attempted_at: string | null;
         };
         Insert: Omit<
           Database['public']['Tables']['proposals']['Row'],
@@ -87,7 +90,7 @@ export interface Database {
           last_synced_block: number;
           last_sync_at: string | null;
           sync_in_progress: boolean | null;
-          /** When the current lock was taken; a lock older than 10 min is taken over */
+          /** When the current lock was taken; a lock older than 3 min is taken over */
           sync_started_at: string | null;
           error_message: string | null;
           created_at: string;

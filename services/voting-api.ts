@@ -15,7 +15,7 @@ import { createPublicClient, http, type Address } from 'viem';
 import { TOKEN_VOTING_ABI, VOTING_TOKEN_ABI } from '@/config/aragon-abis';
 import { PEPPER_DAO_GOVERNANCE_CONFIG } from '@/config/aragon-governance';
 import { chiliz } from '@/config/chains';
-import type { VoteOption } from '@/types/governance';
+import type { GovernanceProposal, VoteOption } from '@/types/governance';
 
 /**
  * EIP-1193 compatible provider interface
@@ -118,6 +118,54 @@ export async function getUserVoteOption(
     throw new Error('Unable to check your vote. Please try again.');
   }
 }
+
+/**
+ * Attach the connected wallet's recorded vote to each proposal.
+ *
+ * Read from each proposal's track plugin (getVoteOption). A failed read
+ * leaves that proposal's userVote empty instead of failing the whole list.
+ */
+export async function attachUserVotes(
+  proposals: Array<GovernanceProposal>,
+  userAddress: string,
+): Promise<Array<GovernanceProposal>> {
+  const result: Array<GovernanceProposal> = [];
+
+  // Small batches keep a long list from flooding the public RPC
+  for (let i = 0; i < proposals.length; i += USER_VOTE_BATCH_SIZE) {
+    const batch = proposals.slice(i, i + USER_VOTE_BATCH_SIZE);
+    const withVotes = await Promise.all(
+      batch.map(async (proposal) => {
+        if (!/^\d+$/.test(proposal.pluginProposalId) || !proposal.pluginAddress) {
+          return proposal;
+        }
+        try {
+          const voteOption = await getUserVoteOption(userAddress, {
+            pluginAddress: proposal.pluginAddress as Address,
+            proposalId: BigInt(proposal.pluginProposalId),
+          });
+          return {
+            ...proposal,
+            userVote: {
+              proposalId: proposal.pluginProposalId,
+              voter: userAddress,
+              voteOption,
+              // Not read here: getVoteOption doesn't return it
+              votingPower: '0',
+            },
+          };
+        } catch {
+          return proposal;
+        }
+      }),
+    );
+    result.push(...withVotes);
+  }
+
+  return result;
+}
+
+const USER_VOTE_BATCH_SIZE = 10;
 
 /**
  * Check if a user can vote on a proposal with the given option

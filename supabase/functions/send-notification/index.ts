@@ -11,7 +11,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
  *
  * Usage:
  * POST /functions/v1/send-notification
- * Body: { type: 'new_proposal', proposalId: 1, title: 'PEP Proposal #1' }
+ * Body: { type: 'new_proposal', proposalId: '<256-bit id as a decimal string>', title: 'PAT-1' }
  */
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
@@ -29,7 +29,8 @@ interface ExpoPushMessage {
 
 interface NotificationPayload {
   type: 'new_proposal' | 'vote_reminder' | 'proposal_ended' | 'proposal_executed';
-  proposalId: number;
+  /** 256-bit on-chain id as a decimal string (too large for a JS number) */
+  proposalId: string;
   title: string;
   body?: string;
 }

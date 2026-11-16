@@ -114,9 +114,9 @@ export function isMinParticipationReached(
 
 /**
  * Format voting power for display
- * Converts large numbers to readable format (e.g., "1.5K CTV", "2.3M CTV")
+ * Converts large numbers to readable format (e.g., "1.5K vePEPPER", "2.3M vePEPPER")
  */
-export function formatVotingPower(power: string, unit = 'CTV'): string {
+export function formatVotingPower(power: string, unit = 'vePEPPER'): string {
   const value = BigInt(power);
   const decimals = BigInt('1000000000000000000'); // 18 decimals
   

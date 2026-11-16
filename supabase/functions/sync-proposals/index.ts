@@ -62,8 +62,22 @@ const FIRST_INDEXED_BLOCK = BigInt(34_100_000);
  */
 const SYNC_STATE_ID = 'main_dao';
 
+/**
+ * Blocks left unscanned at the chain head. The public RPC is load balanced:
+ * a node a few blocks behind can return no logs for blocks it hasn't seen
+ * yet, and the cursor would move past them for good. ~1 minute on Chiliz.
+ */
+const CONFIRMATION_BLOCKS = BigInt(20);
+
 /** Proposals whose IPFS metadata is retried per run, so retries can't eat the time budget */
 const MAX_METADATA_RETRIES_PER_RUN = 10;
+
+/**
+ * Attempts before a CID is given up on (it stays a placeholder and keeps
+ * metadata_pending_uri for a manual look). Retries go oldest-attempt first,
+ * so a few dead CIDs can't hold back newer proposals before reaching this.
+ */
+const MAX_METADATA_ATTEMPTS = 50;
 
 /** Aragon's IPFS gateway: the public ipfs.io / dweb.link gateways now answer 429 */
 const IPFS_GATEWAY = 'https://aragon-1.mypinata.cloud/ipfs/';
@@ -354,16 +368,18 @@ Deno.serve(async (req: Request) => {
     // Get the latest block number
     const latestBlock = await publicClient.getBlockNumber();
     console.log('Latest block:', latestBlock);
+    const safeBlock = latestBlock - CONFIRMATION_BLOCKS;
 
     // Query from last synced block; nothing to find before the plugins existed
     const storedBlock = BigInt(syncState.last_synced_block);
     const startBlock = storedBlock < FIRST_INDEXED_BLOCK ? FIRST_INDEXED_BLOCK : storedBlock;
 
     // Limit blocks per invocation to avoid timeout
-    const targetBlock =
-      startBlock + MAX_BLOCKS_PER_CALL > latestBlock ? latestBlock : startBlock + MAX_BLOCKS_PER_CALL;
+    // and never past the confirmed head (no scan at all when already there)
+    const scanLimit = startBlock + MAX_BLOCKS_PER_CALL > safeBlock ? safeBlock : startBlock + MAX_BLOCKS_PER_CALL;
+    const targetBlock = scanLimit > startBlock ? scanLimit : startBlock;
 
-    console.log(`Syncing from block ${startBlock} to ${targetBlock} (latest: ${latestBlock})`);
+    console.log(`Syncing from block ${startBlock} to ${targetBlock} (latest: ${latestBlock}, safe: ${safeBlock})`);
 
     const proposalCreatedEvent = getAbiItem({
       abi: TOKEN_VOTING_ABI,
@@ -464,6 +480,12 @@ Deno.serve(async (req: Request) => {
       }
 
       try {
+        // Stored once and never refreshed: writing 0 would show quorum as met
+        const minParticipation = minParticipationByPlugin[pluginAddress];
+        if (minParticipation === undefined) {
+          throw new Error(`minParticipation unreadable for ${pluginAddress}`);
+        }
+
         // Independent reads run together to stay inside the time limit.
         // Participation is measured against all vePEPPER at the snapshot; it
         // never changes afterwards, so it is read once (or filled in later).
@@ -495,7 +517,7 @@ Deno.serve(async (req: Request) => {
           tally_abstain: onChain.tally.abstain.toString(),
           total_voting_power: totalVotingPower?.toString() ?? null,
           support_threshold: onChain.supportThreshold,
-          min_participation: minParticipationByPlugin[pluginAddress] ?? 0,
+          min_participation: minParticipation,
           min_duration: eventEndDate - eventStartDate,
           // No multisig stage on the MainDao: proposals go straight to the community vote
           approvals: 0,
@@ -591,7 +613,7 @@ Deno.serve(async (req: Request) => {
           ? await tryReadTotalVotingPower(publicClient, prop.plugin_address, onChain.snapshotTimepoint)
           : null;
 
-        await supabase
+        const { error: refreshError } = await supabase
           .from('proposals')
           .update({
             status,
@@ -606,6 +628,9 @@ Deno.serve(async (req: Request) => {
           .eq('proposal_id', prop.proposal_id)
           .eq('plugin_address', prop.plugin_address);
 
+        if (refreshError) {
+          throw refreshError;
+        }
         updatedCount++;
       } catch (e) {
         console.error(`Failed to update proposal ${prop.proposal_id}:`, e);
@@ -619,10 +644,11 @@ Deno.serve(async (req: Request) => {
     if (elapsedMs() < REFRESH_BUDGET_MS) {
       const { data: pendingMetadata, error: pendingError } = await supabase
         .from('proposals')
-        .select('proposal_id, plugin_address, metadata_pending_uri')
+        .select('proposal_id, plugin_address, metadata_pending_uri, metadata_attempts')
         .in('plugin_address', TRACK_PLUGIN_ADDRESSES_LOWER)
         .not('metadata_pending_uri', 'is', null)
-        .order('block_number', { ascending: true })
+        .lt('metadata_attempts', MAX_METADATA_ATTEMPTS)
+        .order('metadata_attempted_at', { ascending: true, nullsFirst: true })
         .limit(MAX_METADATA_RETRIES_PER_RUN);
 
       if (pendingError) {
@@ -634,17 +660,23 @@ Deno.serve(async (req: Request) => {
           break;
         }
         const metadata = await fetchIpfsMetadata(prop.metadata_pending_uri);
-        if (metadata.pendingUri) {
-          continue; // Still failing: try again next run
-        }
+        const attempt = {
+          metadata_attempts: (prop.metadata_attempts ?? 0) + 1,
+          metadata_attempted_at: new Date().toISOString(),
+        };
+        // Still failing: record the attempt, so it goes to the back of the queue
+        const update = metadata.pendingUri
+          ? attempt
+          : {
+              ...attempt,
+              // Keep the placeholder when the document has no title or body
+              ...(metadata.title ? { title: metadata.title } : {}),
+              ...(metadata.description ? { description: metadata.description } : {}),
+              metadata_pending_uri: null,
+            };
         const { error: metadataError } = await supabase
           .from('proposals')
-          .update({
-            // Keep the placeholder when the document has no title or body
-            ...(metadata.title ? { title: metadata.title } : {}),
-            ...(metadata.description ? { description: metadata.description } : {}),
-            metadata_pending_uri: null,
-          })
+          .update(update)
           .eq('proposal_id', prop.proposal_id)
           .eq('plugin_address', prop.plugin_address);
 
@@ -652,7 +684,9 @@ Deno.serve(async (req: Request) => {
           console.error(`Failed to store metadata for proposal ${prop.proposal_id}:`, metadataError);
           continue;
         }
-        metadataFixedCount++;
+        if (!metadata.pendingUri) {
+          metadataFixedCount++;
+        }
       }
     }
 
@@ -661,9 +695,9 @@ Deno.serve(async (req: Request) => {
     // already stored in that block are skipped by the "already exists" check).
     const scannedToBlock = currentBlock > startBlock ? currentBlock - BigInt(1) : startBlock;
     const syncedToBlock = failedProposal ? failedProposal.blockNumber - BigInt(1) : scannedToBlock;
-    const needsMoreSync = syncedToBlock < latestBlock;
+    const needsMoreSync = syncedToBlock < safeBlock;
 
-    await supabase
+    const { error: syncStateError } = await supabase
       .from('sync_state')
       .update({
         last_synced_block: Number(syncedToBlock),
@@ -677,6 +711,12 @@ Deno.serve(async (req: Request) => {
       })
       .eq('id', SYNC_STATE_ID);
 
+    // Throwing hands it to the catch below, which releases the lock; otherwise
+    // the lock would stay taken until it goes stale
+    if (syncStateError) {
+      throw syncStateError;
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -687,7 +727,7 @@ Deno.serve(async (req: Request) => {
         retryProposalId: failedProposal?.proposalId ?? null,
         needsMoreSync,
         latestBlock: Number(latestBlock),
-        blocksRemaining: Number(latestBlock - syncedToBlock),
+        blocksRemaining: Number(safeBlock > syncedToBlock ? safeBlock - syncedToBlock : BigInt(0)),
       }),
       {
         headers: {

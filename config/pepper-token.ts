@@ -60,6 +60,16 @@ export const PEPPER_STAKING_CONTRACT_ADDRESSES: Array<string> = [VEPEPPER_ESCROW
 export const PEPPER_STAKING_CONTRACT_ADDRESS = PEPPER_STAKING_CONTRACT_ADDRESSES[0];
 
 /**
+ * Retired contracts that still hold PEPPER. Not shown on any card, but their
+ * balance is not in circulation, so circulating supply subtracts it too.
+ * Remove an address once its balance has moved out.
+ */
+export const PEPPER_RETIRED_HOLDER_ADDRESSES: Array<string> = [
+  '0x5cA4C88339D89B2547a001003Cca84F62F557A72', // Old staking contract: unstaking is still open
+  '0x1d70027242A82362fd2c818bb2A3a2cAaA513816', // Old DAO treasury
+];
+
+/**
  * Pepper Treasury wallet: holds the funds shown on peppercoin.com.
  * (Previously shown in the app as the "CEX Fund".)
  */

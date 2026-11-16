@@ -488,10 +488,10 @@ function SettingsTab(props: SettingsTabProps) {
             Total Voting Power
           </Text>
           <Text style={{ fontSize: 14, color: '#FFFFFF' }}>
-            {(Number(proposal.totalVotingPower) / 1e18).toFixed(0)} CTV
+            {(Number(proposal.totalVotingPower) / 1e18).toFixed(0)} vePEPPER
           </Text>
           <Text style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.5)', marginTop: 2 }}>
-            At snapshot block
+            At snapshot
           </Text>
         </View>
       ) : null}

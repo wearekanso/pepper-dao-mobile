@@ -27,9 +27,10 @@ export function runPepperMetricsTests(): void {
     BigInt(1_000),
     BigInt(2_000),
     BigInt(3_000),
+    BigInt(500), // Retired holders (old staking contract, old treasury)
   );
 
-  if (circulating !== BigInt(4_000)) {
+  if (circulating !== BigInt(3_500)) {
     throw new Error('calculateCirculatingSupply produced an unexpected value');
   }
 

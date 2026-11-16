@@ -149,8 +149,9 @@ export function useVoting(proposalId?: string, pluginAddress?: string): UseVotin
   // Invalidate and refetch governance data
   const invalidateGovernanceData = useCallback(
     (propId: string) => {
-      // Invalidate the specific proposal query
-      queryClient.invalidateQueries({ queryKey: ['governance', 'proposal', propId] });
+      // Detail queries are keyed by the route id (plugin_proposalId), not the
+      // on-chain id this hook gets, so refresh every open proposal detail
+      queryClient.invalidateQueries({ queryKey: ['governance', 'proposal'] });
       // Invalidate the proposals list
       queryClient.invalidateQueries({ queryKey: ['governance', 'proposals'] });
       // Invalidate voting power query
