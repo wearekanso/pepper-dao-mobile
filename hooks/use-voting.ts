@@ -16,6 +16,7 @@ import { telemetry } from '@/lib/telemetry';
 import { canVote, getVotingPower, submitVote, type VotingTarget } from '@/services/voting-api';
 import type { VoteOption } from '@/types/governance';
 
+import { USER_VOTES_QUERY_KEY } from './use-governance';
 import { ProtectedActionError, useProtectedAction } from './use-protected-action';
 
 /**
@@ -154,6 +155,8 @@ export function useVoting(proposalId?: string, pluginAddress?: string): UseVotin
       queryClient.invalidateQueries({ queryKey: ['governance', 'proposal'] });
       // Invalidate the proposals list
       queryClient.invalidateQueries({ queryKey: ['governance', 'proposals'] });
+      // The wallet's votes are read separately from the proposals
+      queryClient.invalidateQueries({ queryKey: USER_VOTES_QUERY_KEY });
       // Invalidate voting power query
       queryClient.invalidateQueries({
         queryKey: getVotingPowerQueryKey(address, pluginAddress, propId),

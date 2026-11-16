@@ -42,12 +42,7 @@ WHERE plugin_address NOT IN (
   '0xf544833da4f7eb68a50b636b3eb5895310780137'
 );
 
--- ----------------------------------------------------------------------------
--- 3. Re-index from just before the track plugins were installed
--- ----------------------------------------------------------------------------
-UPDATE sync_state
-SET last_synced_block = 34100000,
-    last_sync_at = NULL,
-    sync_in_progress = false,
-    error_message = NULL
-WHERE id = 'default';
+-- The 'default' sync_state row is left alone: it belongs to the old indexer.
+-- Rewinding it would let a still-deployed old indexer re-insert the old DAO's
+-- proposals deleted above (and push notifications for active ones). The
+-- MainDao indexer uses its own 'main_dao' row, see 20261116000000.

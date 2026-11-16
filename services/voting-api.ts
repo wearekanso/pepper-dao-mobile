@@ -120,50 +120,53 @@ export async function getUserVoteOption(
 }
 
 /**
- * Attach the connected wallet's recorded vote to each proposal.
+ * Read the wallet's recorded vote on each proposal, keyed by proposal id.
  *
  * Every proposal's getVoteOption goes through Multicall3 in one RPC call
  * (viem splits very long lists into a few). A failed read leaves that
- * proposal's userVote empty instead of failing the whole list.
+ * proposal out; a failed RPC call throws, so the query can retry.
  */
-export async function attachUserVotes(
+export async function readUserVotes(
   proposals: Array<GovernanceProposal>,
   userAddress: string,
-): Promise<Array<GovernanceProposal>> {
+): Promise<Record<string, VoteOption>> {
   const readable = proposals.filter(
     (proposal) => /^\d+$/.test(proposal.pluginProposalId) && Boolean(proposal.pluginAddress),
   );
   if (readable.length === 0) {
-    return proposals;
+    return {};
   }
 
-  let results;
-  try {
-    results = await publicClient.multicall({
-      allowFailure: true,
-      contracts: readable.map((proposal) => ({
-        address: proposal.pluginAddress as Address,
-        abi: TOKEN_VOTING_ABI,
-        functionName: 'getVoteOption' as const,
-        args: [BigInt(proposal.pluginProposalId), userAddress as Address] as const,
-      })),
-    });
-  } catch (error) {
-    // RPC down: show the proposals without votes rather than no proposals
-    console.warn('[VotingAPI] Failed to read user votes:', error);
-    return proposals;
-  }
+  const results = await publicClient.multicall({
+    allowFailure: true,
+    contracts: readable.map((proposal) => ({
+      address: proposal.pluginAddress as Address,
+      abi: TOKEN_VOTING_ABI,
+      functionName: 'getVoteOption' as const,
+      args: [BigInt(proposal.pluginProposalId), userAddress as Address] as const,
+    })),
+  });
 
-  const voteById = new Map<string, VoteOption>();
+  const votes: Record<string, VoteOption> = {};
   readable.forEach((proposal, index) => {
     const read = results[index];
     if (read.status === 'success') {
-      voteById.set(proposal.id, VOTE_OPTION_BY_VALUE[Number(read.result)] ?? 'NONE');
+      votes[proposal.id] = VOTE_OPTION_BY_VALUE[Number(read.result)] ?? 'NONE';
     }
   });
+  return votes;
+}
 
+/**
+ * Put votes from readUserVotes on the proposals they belong to
+ */
+export function applyUserVotes(
+  proposals: Array<GovernanceProposal>,
+  votes: Record<string, VoteOption>,
+  userAddress: string,
+): Array<GovernanceProposal> {
   return proposals.map((proposal) => {
-    const voteOption = voteById.get(proposal.id);
+    const voteOption = votes[proposal.id];
     if (!voteOption) {
       return proposal;
     }

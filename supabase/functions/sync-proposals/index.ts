@@ -113,6 +113,12 @@ const TOKEN_VOTING_ABI = [
     type: 'event',
   },
   {
+    anonymous: false,
+    inputs: [{ indexed: true, internalType: 'uint256', name: 'proposalId', type: 'uint256' }],
+    name: 'ProposalExecuted',
+    type: 'event',
+  },
+  {
     inputs: [{ internalType: 'uint256', name: '_proposalId', type: 'uint256' }],
     name: 'getProposal',
     outputs: [
@@ -385,11 +391,18 @@ Deno.serve(async (req: Request) => {
       abi: TOKEN_VOTING_ABI,
       name: 'ProposalCreated',
     });
+    const proposalExecutedEvent = getAbiItem({
+      abi: TOKEN_VOTING_ABI,
+      name: 'ProposalExecuted',
+    });
 
     const allLogs: Array<any> = [];
+    // Block of each ProposalExecuted seen in this scan, keyed by plugin + proposal id
+    const executionBlocks = new Map<string, bigint>();
     let currentBlock = startBlock;
     let errorCount = 0;
     const maxErrors = 10;
+    let lastScanError: string | null = null;
 
     // Query logs in chunks of 1000 blocks (Ankr Public tier limit)
     while (currentBlock < targetBlock && errorCount < maxErrors && elapsedMs() < LOG_SCAN_BUDGET_MS) {
@@ -397,23 +410,30 @@ Deno.serve(async (req: Request) => {
         currentBlock + BLOCK_CHUNK_SIZE > targetBlock ? targetBlock : currentBlock + BLOCK_CHUNK_SIZE;
 
       try {
-        // One request covers every track plugin
+        // One request covers every track plugin and both events
         const logs = await publicClient.getLogs({
           address: [...TRACK_PLUGIN_ADDRESSES],
-          event: proposalCreatedEvent,
+          events: [proposalCreatedEvent, proposalExecutedEvent],
           fromBlock: currentBlock,
           toBlock,
           strict: true,
         });
 
+        for (const log of logs) {
+          if (log.eventName === 'ProposalExecuted') {
+            executionBlocks.set(executionKey(log.address, log.args.proposalId), log.blockNumber);
+          } else {
+            allLogs.push(log);
+          }
+        }
         if (logs.length > 0) {
-          console.log(`Found ${logs.length} ProposalCreated events in blocks ${currentBlock}-${toBlock}`);
-          allLogs.push(...logs);
+          console.log(`Found ${logs.length} proposal events in blocks ${currentBlock}-${toBlock}`);
         }
 
         errorCount = 0; // Reset on success
       } catch (e: any) {
-        console.error(`Error querying blocks ${currentBlock}-${toBlock}:`, e.message || e);
+        lastScanError = String(e?.message || e);
+        console.error(`Error querying blocks ${currentBlock}-${toBlock}:`, lastScanError);
         errorCount++;
 
         // Add delay before retry on error
@@ -427,7 +447,20 @@ Deno.serve(async (req: Request) => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    console.log(`Found ${allLogs.length} ProposalCreated events`);
+    // The scan gave up on a block range: the cursor stays before it, and the
+    // run reports it instead of looking healthy
+    const scanError =
+      errorCount >= maxErrors
+        ? `Log scan stopped at block ${currentBlock} after ${maxErrors} failed requests: ${lastScanError}`
+        : null;
+    if (scanError) {
+      console.error(scanError);
+    }
+
+    console.log(`Found ${allLogs.length} ProposalCreated and ${executionBlocks.size} ProposalExecuted events`);
+
+    // executed_at is the execution block's time, not the time this run saw it
+    const executionTimes = await loadExecutionTimes(publicClient, executionBlocks);
 
     // Oldest first, so display indexes follow creation order (PAT-1, PAT-2, ...)
     allLogs.sort((a, b) =>
@@ -511,7 +544,8 @@ Deno.serve(async (req: Request) => {
           status,
           start_date: new Date(eventStartDate * 1000).toISOString(),
           end_date: new Date(eventEndDate * 1000).toISOString(),
-          executed_at: onChain.executed ? new Date().toISOString() : null,
+          // Set when the scan reaches the ProposalExecuted block, if not already seen
+          executed_at: executionTimes.get(executionKey(pluginAddress, proposalIdBigInt)) ?? null,
           tally_yes: onChain.tally.yes.toString(),
           tally_no: onChain.tally.no.toString(),
           tally_abstain: onChain.tally.abstain.toString(),
@@ -585,10 +619,27 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Record executions of proposals stored in an earlier run (rows inserted
+    // above already have it; a proposal not stored yet matches no row and is
+    // picked up when the scan reaches its creation)
+    const insertedKeys = new Set(newProposals.map((p) => executionKey(p.plugin_address, BigInt(p.proposal_id))));
+    for (const [key, executedAt] of executionTimes) {
+      if (insertedKeys.has(key)) continue;
+      const [pluginAddress, proposalId] = key.split(':');
+      const { error: executedError } = await supabase
+        .from('proposals')
+        .update({ executed_at: executedAt })
+        .eq('proposal_id', proposalId)
+        .eq('plugin_address', pluginAddress);
+      if (executedError) {
+        throw executedError;
+      }
+    }
+
     // Refresh proposals whose outcome can still change (tallies, execution)
     const { data: openProposals } = await supabase
       .from('proposals')
-      .select('proposal_id, plugin_address, start_date, total_voting_power, executed_at')
+      .select('proposal_id, plugin_address, start_date, total_voting_power')
       .in('plugin_address', TRACK_PLUGIN_ADDRESSES_LOWER)
       .in('status', NON_FINAL_STATUSES);
 
@@ -621,8 +672,6 @@ Deno.serve(async (req: Request) => {
             tally_no: onChain.tally.no.toString(),
             tally_abstain: onChain.tally.abstain.toString(),
             is_open: onChain.open,
-            // First run that sees the execution records it; later runs keep that time
-            ...(onChain.executed && !prop.executed_at ? { executed_at: new Date().toISOString() } : {}),
             ...(totalVotingPower !== null ? { total_voting_power: totalVotingPower.toString() } : {}),
           })
           .eq('proposal_id', prop.proposal_id)
@@ -707,7 +756,7 @@ Deno.serve(async (req: Request) => {
         error_message:
           failedProposal && !failedProposal.isTimeBudget
             ? `Proposal ${failedProposal.proposalId} at block ${failedProposal.blockNumber} not indexed yet: ${failedProposal.reason}`.slice(0, 500)
-            : null,
+            : scanError?.slice(0, 500) ?? null,
       })
       .eq('id', SYNC_STATE_ID);
 
@@ -719,8 +768,8 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
-        success: true,
-        message: `Synced to block ${syncedToBlock}`,
+        success: scanError === null,
+        message: scanError ?? `Synced to block ${syncedToBlock}`,
         newProposals: newProposals.length,
         updatedProposals: updatedCount,
         metadataFixed: metadataFixedCount,
@@ -867,6 +916,35 @@ function deriveStatus(proposal: OnChainProposal, succeeded: boolean, startDate: 
     return 'PENDING';
   }
   return succeeded ? 'SUCCEEDED' : 'DEFEATED';
+}
+
+/** Plugin + proposal id, the same proposal on every path that reaches it */
+function executionKey(pluginAddress: string, proposalId: bigint): string {
+  return `${pluginAddress.toLowerCase()}:${proposalId.toString()}`;
+}
+
+/**
+ * Execution time per proposal, from the timestamp of its ProposalExecuted block.
+ * Throws if a block can't be read, so the run fails before the cursor moves
+ * past it and the next run tries again.
+ */
+async function loadExecutionTimes(
+  publicClient: any,
+  executionBlocks: Map<string, bigint>,
+): Promise<Map<string, string>> {
+  const blockNumbers = [...new Set(executionBlocks.values())];
+  const timestamps = new Map<bigint, string>();
+  await Promise.all(
+    blockNumbers.map(async (blockNumber) => {
+      const block = await publicClient.getBlock({ blockNumber });
+      timestamps.set(blockNumber, new Date(Number(block.timestamp) * 1000).toISOString());
+    }),
+  );
+  const times = new Map<string, string>();
+  for (const [key, blockNumber] of executionBlocks) {
+    times.set(key, timestamps.get(blockNumber) as string);
+  }
+  return times;
 }
 
 /**
