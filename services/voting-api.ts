@@ -122,50 +122,63 @@ export async function getUserVoteOption(
 /**
  * Attach the connected wallet's recorded vote to each proposal.
  *
- * Read from each proposal's track plugin (getVoteOption). A failed read
- * leaves that proposal's userVote empty instead of failing the whole list.
+ * Every proposal's getVoteOption goes through Multicall3 in one RPC call
+ * (viem splits very long lists into a few). A failed read leaves that
+ * proposal's userVote empty instead of failing the whole list.
  */
 export async function attachUserVotes(
   proposals: Array<GovernanceProposal>,
   userAddress: string,
 ): Promise<Array<GovernanceProposal>> {
-  const result: Array<GovernanceProposal> = [];
-
-  // Small batches keep a long list from flooding the public RPC
-  for (let i = 0; i < proposals.length; i += USER_VOTE_BATCH_SIZE) {
-    const batch = proposals.slice(i, i + USER_VOTE_BATCH_SIZE);
-    const withVotes = await Promise.all(
-      batch.map(async (proposal) => {
-        if (!/^\d+$/.test(proposal.pluginProposalId) || !proposal.pluginAddress) {
-          return proposal;
-        }
-        try {
-          const voteOption = await getUserVoteOption(userAddress, {
-            pluginAddress: proposal.pluginAddress as Address,
-            proposalId: BigInt(proposal.pluginProposalId),
-          });
-          return {
-            ...proposal,
-            userVote: {
-              proposalId: proposal.pluginProposalId,
-              voter: userAddress,
-              voteOption,
-              // Not read here: getVoteOption doesn't return it
-              votingPower: '0',
-            },
-          };
-        } catch {
-          return proposal;
-        }
-      }),
-    );
-    result.push(...withVotes);
+  const readable = proposals.filter(
+    (proposal) => /^\d+$/.test(proposal.pluginProposalId) && Boolean(proposal.pluginAddress),
+  );
+  if (readable.length === 0) {
+    return proposals;
   }
 
-  return result;
-}
+  let results;
+  try {
+    results = await publicClient.multicall({
+      allowFailure: true,
+      contracts: readable.map((proposal) => ({
+        address: proposal.pluginAddress as Address,
+        abi: TOKEN_VOTING_ABI,
+        functionName: 'getVoteOption' as const,
+        args: [BigInt(proposal.pluginProposalId), userAddress as Address] as const,
+      })),
+    });
+  } catch (error) {
+    // RPC down: show the proposals without votes rather than no proposals
+    console.warn('[VotingAPI] Failed to read user votes:', error);
+    return proposals;
+  }
 
-const USER_VOTE_BATCH_SIZE = 10;
+  const voteById = new Map<string, VoteOption>();
+  readable.forEach((proposal, index) => {
+    const read = results[index];
+    if (read.status === 'success') {
+      voteById.set(proposal.id, VOTE_OPTION_BY_VALUE[Number(read.result)] ?? 'NONE');
+    }
+  });
+
+  return proposals.map((proposal) => {
+    const voteOption = voteById.get(proposal.id);
+    if (!voteOption) {
+      return proposal;
+    }
+    return {
+      ...proposal,
+      userVote: {
+        proposalId: proposal.pluginProposalId,
+        voter: userAddress,
+        voteOption,
+        // Not read here: getVoteOption doesn't return it
+        votingPower: '0',
+      },
+    };
+  });
+}
 
 /**
  * Check if a user can vote on a proposal with the given option

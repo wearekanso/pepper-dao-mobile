@@ -20,13 +20,9 @@ ON CONFLICT (id) DO NOTHING;
 --
 --    Set when the gateway fails (rate limit, timeout) at insert time; later
 --    runs retry the fetch and clear it once the real title is stored.
---    Retries go oldest-attempt first and stop after a fixed number, so a few
---    dead CIDs can't keep newer proposals waiting.
 -- ----------------------------------------------------------------------------
 ALTER TABLE proposals ADD COLUMN IF NOT EXISTS metadata_pending_uri TEXT;
-ALTER TABLE proposals ADD COLUMN IF NOT EXISTS metadata_attempts INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE proposals ADD COLUMN IF NOT EXISTS metadata_attempted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS proposals_metadata_pending_idx
-  ON proposals (metadata_attempted_at NULLS FIRST)
+  ON proposals (metadata_pending_uri)
   WHERE metadata_pending_uri IS NOT NULL;
