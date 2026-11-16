@@ -7,6 +7,8 @@ export const MOCK_GOVERNANCE_PROPOSALS: Array<GovernanceProposal> = [
   {
     id: '0x1234_1',
     pluginProposalId: '1',
+    pluginAddress: '0x0000000000000000000000000000000000000000',
+    track: null,
     key: 'PROP-1',
     title: 'Increase Staking Rewards by 15%',
     description:
@@ -45,6 +47,8 @@ export const MOCK_GOVERNANCE_PROPOSALS: Array<GovernanceProposal> = [
   {
     id: '0x1234_2',
     pluginProposalId: '2',
+    pluginAddress: '0x0000000000000000000000000000000000000000',
+    track: null,
     key: 'PROP-2',
     title: 'Launch NFT Marketplace Integration',
     description:
@@ -83,6 +87,8 @@ export const MOCK_GOVERNANCE_PROPOSALS: Array<GovernanceProposal> = [
   {
     id: '0x1234_3',
     pluginProposalId: '3',
+    pluginAddress: '0x0000000000000000000000000000000000000000',
+    track: null,
     key: 'PROP-3',
     title: 'Community Grant Program Q1 2026',
     description:
@@ -121,6 +127,8 @@ export const MOCK_GOVERNANCE_PROPOSALS: Array<GovernanceProposal> = [
   {
     id: '0x1234_4',
     pluginProposalId: '4',
+    pluginAddress: '0x0000000000000000000000000000000000000000',
+    track: null,
     key: 'PROP-4',
     title: 'Treasury Diversification Strategy',
     description:
@@ -159,6 +167,8 @@ export const MOCK_GOVERNANCE_PROPOSALS: Array<GovernanceProposal> = [
   {
     id: '0x1234_5',
     pluginProposalId: '5',
+    pluginAddress: '0x0000000000000000000000000000000000000000',
+    track: null,
     key: 'PROP-5',
     title: 'Reduce Proposal Threshold to 50 PEPPER',
     description:
@@ -197,6 +207,8 @@ export const MOCK_GOVERNANCE_PROPOSALS: Array<GovernanceProposal> = [
   {
     id: '0x1234_6',
     pluginProposalId: '6',
+    pluginAddress: '0x0000000000000000000000000000000000000000',
+    track: null,
     key: 'PROP-6',
     title: 'Partnership with ChilizX Exchange',
     description:

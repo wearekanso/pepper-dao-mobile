@@ -46,7 +46,7 @@ export function VoteSheet({ visible, onClose, proposal, initialOption, onSuccess
   const isDemo = isDemoProposalId(proposal.id);
   const { profile } = useUser();
   const [isFirstVote, setIsFirstVote] = useState(!profile?.has_voted);
-  const voting = useVoting(isDemo ? undefined : proposal.pluginProposalId);
+  const voting = useVoting(isDemo ? undefined : proposal.pluginProposalId, proposal.pluginAddress);
   const [demoError, setDemoError] = useState<string | null>(null);
   const txError = isDemo ? demoError : voting.txError;
   const resetTxState = voting.resetTxState;

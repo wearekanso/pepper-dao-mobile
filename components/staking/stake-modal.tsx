@@ -6,8 +6,10 @@
 
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ARAGON_DAO_URL } from '@/config/aragon-governance';
+import { STAKING_DEPOSITS_ENABLED } from '@/config/features';
 import { useStaking } from '@/hooks/use-staking';
 
 import { StakeInput } from './stake-input';
@@ -23,7 +25,8 @@ interface StakeModalProps {
 type TabType = 'stake' | 'unstake';
 
 export function StakeModal({ visible, onClose, onSuccess }: StakeModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('stake');
+  // Staking into the old contract is closed (no voting power): unstake only
+  const [activeTab, setActiveTab] = useState<TabType>(STAKING_DEPOSITS_ENABLED ? 'stake' : 'unstake');
   const [stakeAmount, setStakeAmount] = useState('');
   const [unstakeAmount, setUnstakeAmount] = useState('');
 
@@ -166,8 +169,26 @@ export function StakeModal({ visible, onClose, onSuccess }: StakeModalProps) {
               </View>
             </View>
 
+            {STAKING_DEPOSITS_ENABLED ? null : (
+              <View className="mb-4 gap-2 border-2 border-[#FFC043] p-3">
+                <Text className="font-['PPNeueBit-Bold'] text-xs uppercase tracking-wider text-[#FFC043]">
+                  Staking has moved
+                </Text>
+                <Text className="text-xs text-white/80">
+                  Voting power now comes from locking PEPPER as vePEPPER on Aragon. The old staking contract no longer
+                  counts for votes, so unstake your PEPPER here and lock it there.
+                </Text>
+                <Pressable
+                  onPress={() => void Linking.openURL(ARAGON_DAO_URL)}
+                  className="items-center border-2 border-[#FFC043] py-2 active:bg-[#FFC043]/10"
+                >
+                  <Text className="font-['PPNeueBit-Bold'] text-sm uppercase text-[#FFC043]">Lock on Aragon</Text>
+                </Pressable>
+              </View>
+            )}
+
             {/* Tabs */}
-            <View className="mb-4 flex-row bg-white/5">
+            <View className="mb-4 flex-row bg-white/5" style={STAKING_DEPOSITS_ENABLED ? undefined : { display: 'none' }}>
               <Pressable
                 onPress={() => handleTabChange('stake')}
                 className={`flex-1 py-2.5 ${activeTab === 'stake' ? 'bg-[#00FF80]' : ''}`}

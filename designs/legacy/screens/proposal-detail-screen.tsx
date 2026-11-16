@@ -343,10 +343,7 @@ function VotingTab(props: VotingTabProps) {
 
           {hasVotingData && stage1Passed ? (
             <View>
-              <VotingBreakdown
-                tally={proposal.tally!}
-                totalVotingPower={proposal.totalVotingPower!}
-              />
+              <VotingBreakdown tally={proposal.tally!} />
             </View>
           ) : stage1NotReached ? (
             <View style={{ backgroundColor: 'rgba(255, 0, 110, 0.1)', padding: 12 }}>
@@ -381,7 +378,9 @@ function VotingTab(props: VotingTabProps) {
     );
   }
 
-  if (!proposal.tally || !proposal.votingSettings || !proposal.totalVotingPower) {
+  // The snapshot total can be unknown: the breakdown still shows, only the
+  // participation-based threshold indicators need it
+  if (!proposal.tally || !proposal.votingSettings) {
     return (
       <View className="p-4">
         <Text className="text-center text-[12px] text-white/60">
@@ -394,25 +393,26 @@ function VotingTab(props: VotingTabProps) {
   return (
     <View>
       {/* Voting Breakdown */}
-      <VotingBreakdown
-        tally={proposal.tally}
-        totalVotingPower={proposal.totalVotingPower}
-      />
+      <VotingBreakdown tally={proposal.tally} />
 
-      {/* Divider */}
-      <View
-        style={{
-          height: 2,
-          backgroundColor: '#FFFFFF',
-        }}
-      />
+      {proposal.totalVotingPower ? (
+        <>
+          {/* Divider */}
+          <View
+            style={{
+              height: 2,
+              backgroundColor: '#FFFFFF',
+            }}
+          />
 
-      {/* Threshold Indicators */}
-      <ThresholdIndicators
-        tally={proposal.tally}
-        votingSettings={proposal.votingSettings}
-        totalVotingPower={proposal.totalVotingPower}
-      />
+          {/* Threshold Indicators */}
+          <ThresholdIndicators
+            tally={proposal.tally}
+            votingSettings={proposal.votingSettings}
+            totalVotingPower={proposal.totalVotingPower}
+          />
+        </>
+      ) : null}
     </View>
   );
 }
@@ -488,10 +488,10 @@ function SettingsTab(props: SettingsTabProps) {
             Total Voting Power
           </Text>
           <Text style={{ fontSize: 14, color: '#FFFFFF' }}>
-            {(Number(proposal.totalVotingPower) / 1e18).toFixed(0)} CTV
+            {(Number(proposal.totalVotingPower) / 1e18).toFixed(0)} vePEPPER
           </Text>
           <Text style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.5)', marginTop: 2 }}>
-            At snapshot block
+            At snapshot
           </Text>
         </View>
       ) : null}
@@ -624,6 +624,7 @@ export function LegacyProposalDetailScreen() {
               <VotingTrackBadge
                 startDate={proposal.startDate}
                 endDate={proposal.endDate}
+                track={proposal.track ?? undefined}
               />
               <ProposalStatusPill status={proposal.status} />
             </View>

@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { ARAGON_DAO_URL } from '@/config/aragon-governance';
+import { STAKING_DEPOSITS_ENABLED } from '@/config/features';
 import { useStaking } from '@/hooks/use-staking';
 import { formatCompact, formatInteger } from '@/designs/thermal/lib/format';
 
@@ -19,8 +21,12 @@ interface StakeSheetProps {
 /**
  * Stake or unstake PEPPER. Same contract flow as the other designs
  * (approve → stake, or unstake) on top of useStaking.
+ *
+ * While STAKING_DEPOSITS_ENABLED is off it is unstake-only and points to
+ * Aragon for locking: the old staking contract gives no voting power.
  */
-export function StakeSheet({ visible, onClose, initialMode = 'stake' }: StakeSheetProps) {
+export function StakeSheet({ visible, onClose, initialMode: requestedMode = 'stake' }: StakeSheetProps) {
+  const initialMode: StakeMode = STAKING_DEPOSITS_ENABLED ? requestedMode : 'unstake';
   const [mode, setMode] = useState<StakeMode>(initialMode);
   const [amount, setAmount] = useState('');
   const {
@@ -96,7 +102,11 @@ export function StakeSheet({ visible, onClose, initialMode = 'stake' }: StakeShe
       locked={isPending}
       eyebrow="1F · SEED VAULT"
       title={isStake ? 'STAKE PEPPER' : 'UNSTAKE PEPPER'}
-      subtitle="Staked PEPPER is your voting power in the Ministers Hall."
+      subtitle={
+        STAKING_DEPOSITS_ENABLED
+          ? 'Staked PEPPER is your voting power in the Ministers Hall.'
+          : 'Take your PEPPER out of the old staking contract.'
+      }
       footer={
         <>
           <HqButton label="CANCEL" variant="secondary" disabled={isPending} onPress={onClose} />
@@ -110,17 +120,28 @@ export function StakeSheet({ visible, onClose, initialMode = 'stake' }: StakeShe
         </>
       }
     >
-      <Segmented
-        options={[
-          { value: 'stake', label: 'STAKE' },
-          { value: 'unstake', label: 'UNSTAKE' },
-        ]}
-        value={mode}
-        onChange={(next) => {
-          setMode(next);
-          setAmount('');
-        }}
-      />
+      {STAKING_DEPOSITS_ENABLED ? (
+        <Segmented
+          options={[
+            { value: 'stake', label: 'STAKE' },
+            { value: 'unstake', label: 'UNSTAKE' },
+          ]}
+          value={mode}
+          onChange={(next) => {
+            setMode(next);
+            setAmount('');
+          }}
+        />
+      ) : (
+        <>
+          <Notice
+            title="STAKING HAS MOVED"
+            message="Voting power now comes from locking PEPPER as vePEPPER on Aragon. The old staking contract no longer counts for votes, so unstake your PEPPER here and lock it there."
+            color={HQ_COLORS.yellow}
+          />
+          <HqButton label="LOCK ON ARAGON" variant="secondary" onPress={() => void Linking.openURL(ARAGON_DAO_URL)} />
+        </>
+      )}
 
       <View style={styles.balances}>
         <Balance label="IN WALLET" value={isLoading ? '…' : formatCompact(walletBalance)} />

@@ -4,7 +4,7 @@
 - **Vision**: A playful, credible DAO portal that lets anyone track treasury growth, vote via Aragon, stake $PEPPER, and explore the gamified Pepperverse.
 - **Chain**: Chiliz Mainnet (ChainID 88888)
 - **Token**: $PEPPER `0x60F397acBCfB8f4e3234C659A3E10867e6fA6b67` ([view on Chiliscan](https://chiliscan.com/token/0x60F397acBCfB8f4e3234C659A3E10867e6fA6b67?chainid=88888))
-- **DAO**: `0xDedD0A73c3EC17dfbd057b0bD3FE6D2152b7284` ([Aragon dashboard](https://app.aragon.org/dao/chiliz-mainnet/0xDedD0A73c3EC17dfbd057b0bD3FE6D2152b7284B/dashboard?members=multisig&proposals=all))
+- **DAO**: PEPPER MainDao `0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213` ([Aragon dashboard](https://app.aragon.org/dao/chiliz-mainnet/0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213/dashboard)). Voting tracks are separate TokenVoting plugins (Standard / Agile / Fast) with vePEPPER voting power; addresses in `config/aragon-governance.ts`
 - **Wallet**: ReOwn SDK + WalletConnect fallback
 - **Backend**: Aragon SDK for proposals/votes; direct on-chain reads for treasury and staking
 

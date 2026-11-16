@@ -8,7 +8,7 @@ import type { GovernanceProposal, GovernanceStatus } from '@/types/governance';
 import { formatAgo, formatCountdown, shortenKey } from '@/designs/thermal/lib/format';
 import { getProposalTitle, getVoteSplit, isLiveProposal } from '@/designs/thermal/lib/proposal';
 
-import { Card, ListRow, Notice, SectionLabel, Segmented, SplitBar, Touchable } from '../components/atoms';
+import { Card, ListRow, Notice, SectionLabel, Segmented, SplitBar } from '../components/atoms';
 import { HqButton } from '../components/hq-button';
 import { HqScreen } from '../components/hq-screen';
 import { HQ_IMAGES } from '../lib/floors';
@@ -38,11 +38,6 @@ export function MinistersHallScreen() {
       header={{
         floor: '3F',
         title: 'MINISTERS HALL',
-        right: (
-          <Touchable onPress={() => router.push('/governance/create')} style={styles.newButton} hitSlop={6}>
-            <Text style={TYPE.display20}>+ NEW</Text>
-          </Touchable>
-        ),
       }}
       banner={HQ_IMAGES.ministers}
       refreshing={isRefetching}
@@ -161,11 +156,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  newButton: {
-    borderWidth: 1,
-    borderColor: HQ_COLORS.line,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
   },
 });

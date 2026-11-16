@@ -28,6 +28,8 @@
     "orientation": "portrait",
     "plugins": [
       "expo-router",
+      "./plugins/with-min-pod-deployment-target",
+      "./plugins/with-scene-lifecycle",
       [
         "expo-splash-screen",
         {

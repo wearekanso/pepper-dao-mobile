@@ -71,7 +71,8 @@ export interface Profile {
 export interface Vote {
   id: string;
   profile_id: string;
-  proposal_id: number;
+  /** 256-bit on-chain proposal id, stored as TEXT */
+  proposal_id: string;
   vote_type: VoteType;
   transaction_hash: string | null;
   created_at: string;
@@ -88,7 +89,8 @@ export interface Activity {
   total_after: number;
   rank_before: Rank | null;
   rank_after: Rank | null;
-  proposal_id: number | null;
+  /** 256-bit on-chain proposal id, stored as TEXT */
+  proposal_id: string | null;
   streak_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;

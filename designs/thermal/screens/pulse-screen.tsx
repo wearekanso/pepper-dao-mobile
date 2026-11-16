@@ -5,7 +5,13 @@ import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser'
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
+import {
+  BUYBACK_WALLET_ADDRESS,
+  MAIN_DAO_TREASURY_ADDRESS as TREASURY_ADDRESS,
+  PEPPER_STAKING_CONTRACT_ADDRESS as STAKING_ADDRESS,
+  PEPPER_TOKEN_ADDRESS,
+  PEPPER_TREASURY_WALLET_ADDRESS,
+} from '@/config/pepper-token';
 import { useUser } from '@/contexts/user-context';
 import { useWallet } from '@/contexts/wallet-context';
 import { useGovernanceProposals } from '@/hooks/use-governance';
@@ -92,12 +98,20 @@ export function PulseScreen() {
         modal: 'staked',
       },
       {
-        key: 'cex',
-        label: 'CEX FUND',
-        icon: ICON_CEX,
-        value: metrics ? formatCompact(tokenToNumber(metrics.cexFundChzBalance, 18)) : '–',
-        hint: 'CHZ · exchange listing',
-        modal: 'cex',
+        key: 'pepperTreasury',
+        label: 'PEPPER TREASURY',
+        icon: ICON_TREASURY,
+        value: metrics ? formatCompact(tokenToNumber(metrics.pepperTreasuryChzBalance, 18)) : '–',
+        hint: 'CHZ · peppercoin.com funds',
+        modal: 'pepperTreasury',
+      },
+      {
+        key: 'buyback',
+        label: 'BUYBACK',
+        icon: ICON_BUYBACK,
+        value: metrics ? formatCompact(tokenToNumber(metrics.buybackChzBalance, 18)) : '–',
+        hint: 'CHZ · daily PEPPER buyback',
+        modal: 'buyback',
       },
     ];
   }, [metrics, decimals]);
@@ -201,7 +215,7 @@ export function PulseScreen() {
       <View style={{ gap: 10 }}>
         <SectionLabel label="PEPPER TOKEN" />
         <View style={{ gap: 12 }}>
-          {[readouts.slice(0, 2), readouts.slice(2, 4)].map((pair, rowIndex) => (
+          {chunkPairs(readouts).map((pair, rowIndex) => (
             <View key={rowIndex} style={[styles.row, { gap: 12 }]}>
               {pair.map((readout, columnIndex) => (
                 <Panel
@@ -231,7 +245,7 @@ export function PulseScreen() {
         </View>
       </View>
 
-      <Panel index={8} onPress={() => router.push('/rulebook')}>
+      <Panel index={4 + readouts.length} onPress={() => router.push('/rulebook')}>
         <View style={[styles.row, { gap: 12, alignItems: 'center' }]}>
           <PixelArt name="scroll" />
           <View style={{ flex: 1 }}>
@@ -282,13 +296,22 @@ export function PulseScreen() {
         address={STAKING_ADDRESS}
       />
       <InfoSheet
-        visible={modal === 'cex'}
+        visible={modal === 'pepperTreasury'}
         onClose={() => setModal(null)}
-        title="CEX FUND"
+        title="PEPPER TREASURY"
         value={readouts[3].value}
         unit="CHZ"
-        message="Raised to secure a Tier 1 centralized exchange listing for PEPPER. If it isn't enough after 90 days, the funds go back to the treasury and the community decides what to do with them."
-        address={CEX_FUND_ADDRESS}
+        message="The Pepper Treasury wallet: the funds shown on peppercoin.com. Every move is visible on-chain."
+        address={PEPPER_TREASURY_WALLET_ADDRESS}
+      />
+      <InfoSheet
+        visible={modal === 'buyback'}
+        onClose={() => setModal(null)}
+        title="DAILY BUYBACK"
+        value={readouts[4].value}
+        unit="CHZ"
+        message="CHZ set aside for the daily PEPPER buyback. This wallet buys PEPPER from the market every day."
+        address={BUYBACK_WALLET_ADDRESS}
       />
     </ThermalScreen>
   );
@@ -362,7 +385,16 @@ function formatDelta(delta: bigint | null): string {
   return `${sign}${formatPepperAmount(absolute, 18)} CHZ TODAY`;
 }
 
-type ModalKey = 'treasury' | 'treasuryInfo' | 'supply' | 'burnt' | 'staked' | 'cex';
+/** Two readouts per row; an odd last one gets the full row */
+function chunkPairs<T>(items: Array<T>): Array<Array<T>> {
+  const rows: Array<Array<T>> = [];
+  for (let index = 0; index < items.length; index += 2) {
+    rows.push(items.slice(index, index + 2));
+  }
+  return rows;
+}
+
+type ModalKey = 'treasury' | 'treasuryInfo' | 'supply' | 'burnt' | 'staked' | 'pepperTreasury' | 'buyback';
 
 interface Readout {
   key: string;
@@ -376,12 +408,10 @@ interface Readout {
 const ICON_SUPPLY = require('@/assets/images/pepper/total-supply.png');
 const ICON_BURN = require('@/assets/images/pepper/burn.png');
 const ICON_VAULT = require('@/assets/images/pepper/vault.png');
-const ICON_CEX = require('@/assets/images/pepper/cex-fund.png');
+const ICON_TREASURY = require('@/assets/images/pepper/treasury.png');
+const ICON_BUYBACK = require('@/assets/images/pepper/pepper.png');
 
 const FANX_SWAP_URL = 'https://app.fanx.xyz/trade/swap';
-const TREASURY_ADDRESS = '0x1d70027242A82362fd2c818bb2A3a2cAaA513816';
-const STAKING_ADDRESS = '0x5cA4C88339D89B2547a001003Cca84F62F557A72';
-const CEX_FUND_ADDRESS = '0x0ECAB88E26f7eA29D0DcB4aBcF060A5Ae09a1C2B';
 
 /** Chains a wallet is most likely to be on instead of Chiliz */
 const CHAIN_NAMES: Record<number, string> = {

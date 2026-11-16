@@ -13,9 +13,10 @@ import { useCallback, useState } from 'react';
 import { ACTIVE_CHAIN_ID } from '@/config/chains';
 import { useWallet } from '@/contexts/wallet-context';
 import { telemetry } from '@/lib/telemetry';
-import { canVote, getVotingPower, submitVote } from '@/services/voting-api';
+import { canVote, getVotingPower, submitVote, type VotingTarget } from '@/services/voting-api';
 import type { VoteOption } from '@/types/governance';
 
+import { USER_VOTES_QUERY_KEY } from './use-governance';
 import { ProtectedActionError, useProtectedAction } from './use-protected-action';
 
 /**
@@ -57,8 +58,23 @@ interface UseVotingReturn {
 /**
  * Query key for voting power data
  */
-function getVotingPowerQueryKey(address: string | undefined, proposalId: number) {
-  return ['voting-power', address, proposalId, ACTIVE_CHAIN_ID] as const;
+function getVotingPowerQueryKey(address: string | undefined, pluginAddress: string | undefined, proposalId: string | undefined) {
+  return ['voting-power', address, pluginAddress, proposalId, ACTIVE_CHAIN_ID] as const;
+}
+
+function getCanVoteQueryKey(address: string | undefined, pluginAddress: string | undefined, proposalId: string | undefined) {
+  return ['can-vote', address, pluginAddress, proposalId, ACTIVE_CHAIN_ID] as const;
+}
+
+/**
+ * Builds the on-chain target. Proposal IDs are 256-bit hashes, so they go
+ * through BigInt: parseInt would silently lose precision.
+ */
+function toVotingTarget(pluginAddress: string | undefined, proposalId: string | undefined): VotingTarget | null {
+  if (!pluginAddress || !proposalId || !/^\d+$/.test(proposalId)) {
+    return null;
+  }
+  return { pluginAddress: pluginAddress as VotingTarget['pluginAddress'], proposalId: BigInt(proposalId) };
 }
 
 /**
@@ -89,8 +105,9 @@ function formatVotingPower(power: bigint): string {
 /**
  * Hook for governance voting operations
  * @param proposalId - On-chain proposal ID (numeric string from pluginProposalId)
+ * @param pluginAddress - Track plugin the proposal lives on (proposal.pluginAddress)
  */
-export function useVoting(proposalId?: string): UseVotingReturn {
+export function useVoting(proposalId?: string, pluginAddress?: string): UseVotingReturn {
   const { address, isConnected } = useWallet();
   const { provider: walletProvider } = useProvider();
   const { executeProtected, isReady } = useProtectedAction();
@@ -100,25 +117,24 @@ export function useVoting(proposalId?: string): UseVotingReturn {
   const [txStatus, setTxStatus] = useState<TransactionStatus>('idle');
   const [txError, setTxError] = useState<string | null>(null);
 
-  // Parse proposal ID
-  const numericProposalId = proposalId ? parseInt(proposalId, 10) : 0;
+  const target = toVotingTarget(pluginAddress, proposalId);
 
-  // Fetch voting power
+  // Fetch voting power (vePEPPER at the proposal snapshot)
   const {
     data: votingPower = BigInt(0),
     isLoading,
   } = useQuery({
-    queryKey: getVotingPowerQueryKey(address, numericProposalId),
-    queryFn: () => getVotingPower(address!, numericProposalId),
-    enabled: !!address && isConnected && numericProposalId > 0,
+    queryKey: getVotingPowerQueryKey(address, pluginAddress, proposalId),
+    queryFn: () => getVotingPower(address!, target!),
+    enabled: !!address && isConnected && target !== null,
     staleTime: 30_000, // 30 seconds
   });
 
   // Check if user can vote
   const { data: canUserVote = false } = useQuery({
-    queryKey: ['can-vote', address, numericProposalId, ACTIVE_CHAIN_ID],
-    queryFn: () => canVote(address!, numericProposalId, 'YES'),
-    enabled: !!address && isConnected && numericProposalId > 0,
+    queryKey: getCanVoteQueryKey(address, pluginAddress, proposalId),
+    queryFn: () => canVote(address!, target!, 'YES'),
+    enabled: !!address && isConnected && target !== null,
     staleTime: 30_000,
   });
 
@@ -134,20 +150,23 @@ export function useVoting(proposalId?: string): UseVotingReturn {
   // Invalidate and refetch governance data
   const invalidateGovernanceData = useCallback(
     (propId: string) => {
-      // Invalidate the specific proposal query
-      queryClient.invalidateQueries({ queryKey: ['governance', 'proposal', propId] });
+      // Detail queries are keyed by the route id (plugin_proposalId), not the
+      // on-chain id this hook gets, so refresh every open proposal detail
+      queryClient.invalidateQueries({ queryKey: ['governance', 'proposal'] });
       // Invalidate the proposals list
       queryClient.invalidateQueries({ queryKey: ['governance', 'proposals'] });
+      // The wallet's votes are read separately from the proposals
+      queryClient.invalidateQueries({ queryKey: USER_VOTES_QUERY_KEY });
       // Invalidate voting power query
       queryClient.invalidateQueries({
-        queryKey: getVotingPowerQueryKey(address, parseInt(propId, 10)),
+        queryKey: getVotingPowerQueryKey(address, pluginAddress, propId),
       });
       // Invalidate can-vote query
       queryClient.invalidateQueries({
-        queryKey: ['can-vote', address, parseInt(propId, 10), ACTIVE_CHAIN_ID],
+        queryKey: getCanVoteQueryKey(address, pluginAddress, propId),
       });
     },
-    [queryClient, address]
+    [queryClient, address, pluginAddress]
   );
 
   // Submit vote
@@ -166,19 +185,14 @@ export function useVoting(proposalId?: string): UseVotingReturn {
             throw new Error('Wallet address not available');
           }
 
-          const numericId = parseInt(propId, 10);
-          if (isNaN(numericId)) {
+          const voteTarget = toVotingTarget(pluginAddress, propId);
+          if (!voteTarget) {
             throw new Error('Invalid proposal ID');
           }
 
           telemetry.track('vote_initiated', { proposalId: propId, voteOption: option });
 
-          const txResult = await submitVote(
-            walletProvider,
-            numericId,
-            address,
-            option
-          );
+          const txResult = await submitVote(walletProvider, voteTarget, option);
 
           if (txResult.status === 'error') {
             throw new Error(txResult.error);
@@ -213,7 +227,7 @@ export function useVoting(proposalId?: string): UseVotingReturn {
         return { success: false, error: errorMessage };
       }
     },
-    [executeProtected, walletProvider, address, invalidateGovernanceData]
+    [executeProtected, walletProvider, address, pluginAddress, invalidateGovernanceData]
   );
 
   return {

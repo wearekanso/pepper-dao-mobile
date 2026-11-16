@@ -5,7 +5,6 @@ import type { ProposalTally } from '@/types/governance';
 
 interface VotingBreakdownProps {
   tally: ProposalTally;
-  totalVotingPower?: string;
 }
 
 interface VoteOptionCardProps {
@@ -13,15 +12,12 @@ interface VoteOptionCardProps {
   votes: string;
   percentage: number;
   color: string;
-  totalVotingPower?: string;
 }
 
 function VoteOptionCard(props: VoteOptionCardProps) {
-  const { label, votes, percentage, color, totalVotingPower } = props;
-  
-  const formattedVotes = totalVotingPower 
-    ? formatVotingPower(votes)
-    : '0 CTV';
+  const { label, votes, percentage, color } = props;
+  // Vote counts come from the tally alone; they don't need the snapshot total
+  const formattedVotes = formatVotingPower(votes);
 
   return (
     <View className="mb-3">
@@ -57,7 +53,7 @@ function VoteOptionCard(props: VoteOptionCardProps) {
 }
 
 export function VotingBreakdown(props: VotingBreakdownProps) {
-  const { tally, totalVotingPower } = props;
+  const { tally } = props;
 
   if (!tally) {
     return (
@@ -84,7 +80,6 @@ export function VotingBreakdown(props: VotingBreakdownProps) {
         votes={tally.yes}
         percentage={distribution.yes}
         color="#00FF80"
-        totalVotingPower={totalVotingPower}
       />
 
       <VoteOptionCard
@@ -92,7 +87,6 @@ export function VotingBreakdown(props: VotingBreakdownProps) {
         votes={tally.abstain}
         percentage={distribution.abstain}
         color="#6B7280"
-        totalVotingPower={totalVotingPower}
       />
 
       <VoteOptionCard
@@ -100,7 +94,6 @@ export function VotingBreakdown(props: VotingBreakdownProps) {
         votes={tally.no}
         percentage={distribution.no}
         color="#FF006E"
-        totalVotingPower={totalVotingPower}
       />
     </View>
   );

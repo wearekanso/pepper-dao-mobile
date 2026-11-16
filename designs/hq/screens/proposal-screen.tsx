@@ -163,7 +163,7 @@ interface VoteDockProps {
 function VoteDock({ proposal, onSealed }: VoteDockProps) {
   const insets = useSafeAreaInsets();
   const { isConnected, connect } = useWallet();
-  const { formattedVotingPower, isLoading, txStatus, txError, vote } = useVoting(proposal.pluginProposalId);
+  const { formattedVotingPower, isLoading, txStatus, txError, vote } = useVoting(proposal.pluginProposalId, proposal.pluginAddress);
   const recorded = normalizeVote(proposal.userVote?.voteOption);
   const [selected, setSelected] = useState<CastOption | null>(recorded);
   const isOpen = proposal.status === 'ACTIVE';

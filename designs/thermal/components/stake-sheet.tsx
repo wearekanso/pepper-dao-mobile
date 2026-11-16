@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { ARAGON_DAO_URL } from '@/config/aragon-governance';
+import { STAKING_DEPOSITS_ENABLED } from '@/config/features';
 import { useStaking } from '@/hooks/use-staking';
 
 import { DEMO_WALLET } from '../lib/demo-power';
@@ -23,9 +25,13 @@ interface StakeSheetProps {
 /**
  * Stake / unstake PEPPER for vePEPPER voting power. Same flow as the legacy
  * StakeModal (approve → stake, or unstake) on top of useStaking.
+ *
+ * While STAKING_DEPOSITS_ENABLED is off it is unstake-only: the old staking
+ * contract gives no voting power, so it points to Aragon for locking and
+ * only lets holders take their PEPPER out.
  */
 export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeSheetProps) {
-  const [mode, setMode] = useState<Operation>('stake');
+  const [mode, setMode] = useState<Operation>(STAKING_DEPOSITS_ENABLED ? 'stake' : 'unstake');
   const [amount, setAmount] = useState('');
   const staking = useStaking();
   const { stakingData, error: queryError, txStatus, txError, approve, stake, unstake, refetch } = staking;
@@ -114,12 +120,18 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
         />
       }
     >
-      <Text style={TYPE.body14}>Staked PEPPER becomes vePEPPER: your voting power, plus +5 REP every week.</Text>
+      {STAKING_DEPOSITS_ENABLED ? (
+        <>
+          <Text style={TYPE.body14}>Staked PEPPER becomes vePEPPER: your voting power, plus +5 REP every week.</Text>
 
-      <View style={styles.row}>
-        <FilterChip label="STAKE" isActive={isStake} onPress={() => selectMode('stake')} style={{ flex: 1 }} />
-        <FilterChip label="UNSTAKE" isActive={!isStake} onPress={() => selectMode('unstake')} style={{ flex: 1 }} />
-      </View>
+          <View style={styles.row}>
+            <FilterChip label="STAKE" isActive={isStake} onPress={() => selectMode('stake')} style={{ flex: 1 }} />
+            <FilterChip label="UNSTAKE" isActive={!isStake} onPress={() => selectMode('unstake')} style={{ flex: 1 }} />
+          </View>
+        </>
+      ) : (
+        <StakingMovedNotice />
+      )}
 
       <View style={[styles.row, { gap: 12 }]}>
         <Balance label="IN WALLET" value={isLoading ? '…' : formatAmount(walletBalance)} highlight={isStake} />
@@ -196,6 +208,24 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
   );
 }
 
+/** Staking moved to vePEPPER: lock on Aragon, unstake old PEPPER here */
+function StakingMovedNotice() {
+  return (
+    <View style={styles.moved}>
+      <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>STAKING HAS MOVED</Text>
+      <Text style={TYPE.body14}>
+        Voting power now comes from locking PEPPER as vePEPPER on Aragon. The old staking contract no longer counts
+        for votes, so unstake your PEPPER here and lock it there.
+      </Text>
+      <PixelButton
+        label="LOCK ON ARAGON >"
+        variant="outlineGold"
+        onPress={() => void Linking.openURL(ARAGON_DAO_URL)}
+      />
+    </View>
+  );
+}
+
 /** Balance box; the one the current mode spends from gets a white stroke */
 function Balance({ label, value, highlight }: { label: string; value: string; highlight: boolean }) {
   return (
@@ -258,6 +288,12 @@ const styles = StyleSheet.create({
   inputText: {
     flex: 1,
     paddingVertical: 4,
+  },
+  moved: {
+    gap: 10,
+    padding: SPACE.panel,
+    borderWidth: SIZE.stroke,
+    borderColor: THERMAL_COLORS.gold,
   },
   notice: {
     gap: 4,

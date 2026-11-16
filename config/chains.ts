@@ -22,6 +22,10 @@ export const chiliz = defineChain({
       webSocket: ['wss://rpc.ankr.com/chiliz/ws'],
     },
   },
+  // Multicall3 at its standard address (checked on-chain): batches reads into one RPC call
+  contracts: {
+    multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' },
+  },
   blockExplorers: {
     default: {
       name: 'Chiliscan',
@@ -52,6 +56,10 @@ export const chilizSpicy = defineChain({
       http: ['https://chiliz-spicy.publicnode.com'],
       webSocket: ['wss://chiliz-spicy.publicnode.com'],
     },
+  },
+  // Multicall3 at its standard address (checked on-chain): batches reads into one RPC call
+  contracts: {
+    multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' },
   },
   blockExplorers: {
     default: {

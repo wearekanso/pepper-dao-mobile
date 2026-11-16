@@ -11,7 +11,8 @@ import type { EventType, Rank } from '@/types/user';
 interface RecordActivityParams {
   profileId: string;
   eventType: EventType;
-  proposalId?: number;
+  /** On-chain proposal id (256-bit, keep as string) */
+  proposalId?: string;
   streakId?: string;
   metadata?: Record<string, unknown>;
 }

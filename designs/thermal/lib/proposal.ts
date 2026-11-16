@@ -94,6 +94,8 @@ const TRACK_SHORT: Record<VotingTrack, string> = {
 };
 
 function getTrack(proposal: GovernanceProposal): VotingTrack {
+  // Each track is its own plugin, so the plugin is the source of truth
+  if (proposal.track) return proposal.track;
   const toSeconds = (value: string) => String(Math.floor(parseDateMs(value) / 1000));
   return deriveVotingTrack(toSeconds(proposal.startDate), toSeconds(proposal.endDate));
 }
@@ -151,6 +153,9 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
     ];
   }
 
+  // The MainDao has no multisig stage: proposals go straight to the community vote
+  const hasMinistersStage = minApprovals > 0;
+
   const ministersState: StageState = ministersPassed ? 'done' : isRejected ? 'failed' : 'live';
   const ministers: ProposalStage = {
     label: 'SPICY MINISTERS',
@@ -175,7 +180,7 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
   }
 
   return [
-    ministers,
+    ...(hasMinistersStage ? [ministers] : []),
     {
       label: 'COMMUNITY VOTE',
       short: communityState === 'live' ? 'VOTE · LIVE' : 'VOTE',

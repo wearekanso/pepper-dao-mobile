@@ -3,7 +3,7 @@ import { createPublicClient, http } from 'viem';
 import { chiliz } from '../config/chains';
 import {
   PEPPER_TOKEN_ADDRESS,
-  PEPPER_TREASURY_ADDRESSES,
+  DAO_TREASURY_ADDRESSES,
 } from '../config/pepper-token';
 
 export interface PepperTokenMetadata {
@@ -213,13 +213,13 @@ export async function fetchNativeBalances(
 export async function fetchPepperTreasuryBalances(): Promise<
   Array<PepperAddressBalance>
 > {
-  return fetchPepperBalances(PEPPER_TREASURY_ADDRESSES);
+  return fetchPepperBalances(DAO_TREASURY_ADDRESSES);
 }
 
 export async function fetchTreasuryChzBalances(): Promise<
   Array<NativeAddressBalance>
 > {
-  return fetchNativeBalances(PEPPER_TREASURY_ADDRESSES);
+  return fetchNativeBalances(DAO_TREASURY_ADDRESSES);
 }
 
 async function fetchAccountChz24hDelta(address: string): Promise<bigint> {
@@ -300,7 +300,7 @@ export async function fetchTreasuryChzTxs(
 
   const allTxs: Array<TreasuryChzTx> = [];
 
-  for (const address of PEPPER_TREASURY_ADDRESSES) {
+  for (const address of DAO_TREASURY_ADDRESSES) {
     // Use Etherscan-compatible RPC API format (Blockscout standard)
     const params = new URLSearchParams({
       module: 'account',
@@ -420,7 +420,7 @@ export async function fetchTreasuryChz24hDelta(): Promise<bigint | null> {
   try {
     let totalDelta = BigInt(0);
 
-    for (const address of PEPPER_TREASURY_ADDRESSES) {
+    for (const address of DAO_TREASURY_ADDRESSES) {
       // const delta = await fetchAccountChz24hDelta(address);
       // totalDelta += delta;
     }

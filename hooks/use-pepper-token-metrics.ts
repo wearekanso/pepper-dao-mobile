@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import {
-  CEX_FUND_ADDRESS,
+  BUYBACK_WALLET_ADDRESS,
   PEPPER_BURN_ADDRESSES,
+  PEPPER_RETIRED_HOLDER_ADDRESSES,
   PEPPER_STAKING_CONTRACT_ADDRESSES,
+  PEPPER_TREASURY_WALLET_ADDRESS,
   PepperTokenMetrics,
 } from '@/config/pepper-token';
 import { telemetry } from '@/lib/telemetry';
@@ -32,8 +34,9 @@ export function calculateCirculatingSupply(
   burnedAmount: bigint,
   stakedAmount: bigint,
   treasuryBalance: bigint,
+  retiredHolderAmount: bigint,
 ): bigint {
-  const circulating = totalSupply - burnedAmount - stakedAmount - treasuryBalance;
+  const circulating = totalSupply - burnedAmount - stakedAmount - treasuryBalance - retiredHolderAmount;
 
   if (circulating < BigInt(0)) {
     return BigInt(0);
@@ -50,7 +53,9 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     stakingBalances,
     treasuryChzBalances,
     treasuryChzDelta,
-    cexFundChzBalances,
+    pepperTreasuryChzBalances,
+    buybackChzBalances,
+    retiredHolderBalances,
   ] = await Promise.all([
     fetchPepperTokenMetadata(),
     fetchPepperTreasuryBalances(),
@@ -58,7 +63,10 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     fetchPepperBalances(PEPPER_STAKING_CONTRACT_ADDRESSES),
     fetchTreasuryChzBalances(),
     fetchTreasuryChz24hDelta(),
-    fetchNativeBalances([CEX_FUND_ADDRESS]),
+    fetchNativeBalances([PEPPER_TREASURY_WALLET_ADDRESS]),
+    fetchNativeBalances([BUYBACK_WALLET_ADDRESS]),
+    // Old staking contract and old treasury: out of circulation, not on a card
+    fetchPepperBalances(PEPPER_RETIRED_HOLDER_ADDRESSES),
   ]);
 
   const treasuryBalance = sumBalances<PepperAddressBalance>(treasuryBalances);
@@ -67,8 +75,11 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
   const treasuryChzBalance = sumBalances<NativeAddressBalance>(
     treasuryChzBalances,
   );
-  const cexFundChzBalance = sumBalances<NativeAddressBalance>(
-    cexFundChzBalances,
+  const pepperTreasuryChzBalance = sumBalances<NativeAddressBalance>(
+    pepperTreasuryChzBalances,
+  );
+  const buybackChzBalance = sumBalances<NativeAddressBalance>(
+    buybackChzBalances,
   );
 
   const circulatingSupply = calculateCirculatingSupply(
@@ -76,6 +87,7 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     burnedAmount,
     stakedAmount,
     treasuryBalance,
+    sumBalances<PepperAddressBalance>(retiredHolderBalances),
   );
 
   return {
@@ -85,7 +97,8 @@ async function loadPepperTokenMetrics(): Promise<PepperTokenMetrics> {
     treasuryBalance,
     treasuryChzBalance,
     treasuryChzDelta,
-    cexFundChzBalance,
+    pepperTreasuryChzBalance,
+    buybackChzBalance,
     circulatingSupply,
     decimals: metadata.decimals,
     updatedAt: new Date().toISOString(),

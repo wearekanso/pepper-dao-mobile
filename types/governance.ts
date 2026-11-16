@@ -1,3 +1,5 @@
+import type { GovernanceTrack } from '@/config/aragon-governance';
+
 /**
  * Governance status derived from Aragon Multisig proposal state
  * - PENDING: Before startDate
@@ -81,8 +83,12 @@ export interface UserVote {
 export interface GovernanceProposal {
   /** Subgraph ID (format: plugin_proposalId) */
   id: string;
-  /** On-chain proposal ID */
+  /** On-chain proposal ID (256-bit, keep as string) */
   pluginProposalId: string;
+  /** Plugin contract the proposal lives on: votes go to this address */
+  pluginAddress: string;
+  /** Voting track, resolved from the plugin; null for non-track plugins */
+  track: GovernanceTrack | null;
   /**
    * Human readable key like PROP-0, PROP-1, etc.
    */

@@ -1,3 +1,5 @@
+> **Outdated (2026-11-11):** these documents describe the retired DAO `0xDedD…284B` (Staged Proposal Processor + lockToVote + multisig). The app now targets the PEPPER MainDao `0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213`, with one TokenVoting 1.4 plugin per voting track and vePEPPER voting power. Current addresses: `config/aragon-governance.ts`.
+
 # Aragon DAO Integration Documentation
 
 Complete technical documentation for integrating Pepper DAO governance with Aragon OSx.
