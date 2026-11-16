@@ -5,6 +5,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { parseUnits } from 'viem';
 
 import { PEPPER_DECIMALS } from '@/config/staking';
+import { exitFeeToPercent } from '@/config/vepepper';
 import type { VePepperStep, useVePepper } from '@/hooks/use-vepepper';
 import { previewVotingPower } from '@/services/vepepper-api';
 
@@ -36,6 +37,8 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
   const [amount, setAmount] = useState('');
   const { account, txStatus, txStep, lock, getLockSteps } = vePepper;
 
+  // Unknown until the account loads: no balance errors or MAX until then
+  const isAccountReady = demo || Boolean(account);
   const walletBalance = demo ? DEMO_BALANCE : account ? tokenToNumber(account.walletBalance, PEPPER_DECIMALS) : 0;
   const minDeposit = demo ? DEMO_MIN_DEPOSIT : account ? tokenToNumber(account.minDeposit, PEPPER_DECIMALS) : 0;
   const amountNum = parseFloat(amount) || 0;
@@ -43,7 +46,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
   const isPending = txStatus === 'pending';
 
   const inputError =
-    amountNum <= 0
+    amountNum <= 0 || !isAccountReady
       ? null
       : amountNum > walletBalance
         ? 'NOT ENOUGH PEPPER IN WALLET'
@@ -66,7 +69,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
   const atMax = preview.data ? tokenToNumber(preview.data.atMax, PEPPER_DECIMALS) : 0;
   const startShare = atMax > 0 ? atStart / atMax : 0;
   const maxMultiplier = atStart > 0 ? Number((atMax / atStart).toFixed(1)) : 3;
-  const exitFeePercent = (account?.exitFeeBasisPoints ?? DEMO_EXIT_FEE_BASIS_POINTS) / 100;
+  const exitFeePercent = exitFeeToPercent(account?.exitFeeBasisPoints ?? DEMO_EXIT_FEE_BASIS_POINTS);
   const exitCooldown = account?.exitCooldown ?? DEMO_EXIT_COOLDOWN;
 
   function reset() {
@@ -89,6 +92,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
 
   function setMax() {
     void Haptics.selectionAsync();
+    if (!isAccountReady) return;
     setAmount(walletBalance > 0 ? String(Math.floor(walletBalance)) : '');
   }
 
@@ -98,7 +102,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
         Lock PEPPER to get vePEPPER: your voting power on the PEPPER DAO. It grows the longer the lock stays.
       </Text>
 
-      <SheetSection label="AMOUNT" right={`IN WALLET ${formatAmount(walletBalance)}`} />
+      <SheetSection label="AMOUNT" right={`IN WALLET ${isAccountReady ? formatAmount(walletBalance) : '…'}`} />
 
       <View>
         <HardShadow />
@@ -146,7 +150,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
 
       {inputError ? <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>{inputError}</Text> : null}
 
-      {!inputError && amountNum === 0 && walletBalance < minDeposit ? (
+      {isAccountReady && !inputError && amountNum === 0 && walletBalance < minDeposit ? (
         <Text style={[TYPE.body13, { color: INK.muted }]}>
           {`You need at least ${formatInteger(minDeposit)} PEPPER to lock.`}
         </Text>

@@ -43,7 +43,19 @@ const PEPPER = PEPPER_TOKEN_ADDRESS as Address;
 export async function fetchVePepperAccount(userAddress: string): Promise<VePepperAccount> {
   const user = userAddress as Address;
 
-  const [walletBalance, allowance, minDeposit, delegatee, votes, ownedTokens, lastLockId, feePercent, cooldown, maxTime] =
+  const [
+    walletBalance,
+    allowance,
+    minDeposit,
+    delegatee,
+    votes,
+    ownedTokens,
+    lastLockId,
+    feePercent,
+    cooldown,
+    maxTime,
+    approvedForAll,
+  ] =
     await publicClient.multicall({
       allowFailure: false,
       contracts: [
@@ -57,10 +69,12 @@ export async function fetchVePepperAccount(userAddress: string): Promise<VePeppe
         { address: EXIT_QUEUE, abi: VEPEPPER_EXIT_QUEUE_ABI, functionName: 'feePercent' },
         { address: EXIT_QUEUE, abi: VEPEPPER_EXIT_QUEUE_ABI, functionName: 'cooldown' },
         { address: CURVE, abi: VEPEPPER_CURVE_ABI, functionName: 'maxTime' },
+        // An approval for all locks (e.g. given on Aragon) covers every exit
+        { address: LOCK_NFT, abi: VEPEPPER_LOCK_NFT_ABI, functionName: 'isApprovedForAll', args: [user, ESCROW] },
       ],
     });
 
-  const [locks, exits] = await Promise.all([readLocks(ownedTokens), readExits(user, lastLockId)]);
+  const [locks, exits] = await Promise.all([readLocks(ownedTokens, approvedForAll), readExits(user, lastLockId)]);
 
   return {
     walletBalance,
@@ -74,6 +88,23 @@ export async function fetchVePepperAccount(userAddress: string): Promise<VePeppe
     exitCooldown: Number(cooldown),
     maxLockAge: Number(maxTime),
   };
+}
+
+/**
+ * Allowance and delegatee read straight from the chain, right before a
+ * lock: the cached account can still show an allowance the previous lock
+ * already spent, and skipping APPROVE would make createLock revert.
+ */
+export async function readLockState(userAddress: string): Promise<VePepperLockState> {
+  const user = userAddress as Address;
+  const [allowance, delegatee] = await publicClient.multicall({
+    allowFailure: false,
+    contracts: [
+      { address: PEPPER, abi: erc20Abi, functionName: 'allowance', args: [user, ESCROW] },
+      { address: VOTES_ADAPTER, abi: VEPEPPER_VOTES_ADAPTER_ABI, functionName: 'delegates', args: [user] },
+    ],
+  });
+  return { allowance, delegatee: delegatee === zeroAddress ? null : delegatee.toLowerCase() };
 }
 
 /**
@@ -147,7 +178,7 @@ export function parseVePepperError(error: unknown): string {
 }
 
 /** Locks still in the wallet, with what exiting each one needs */
-async function readLocks(tokenIds: ReadonlyArray<bigint>): Promise<Array<VePepperLock>> {
+async function readLocks(tokenIds: ReadonlyArray<bigint>, approvedForAll: boolean): Promise<Array<VePepperLock>> {
   if (tokenIds.length === 0) return [];
 
   const results = await publicClient.multicall({
@@ -168,7 +199,7 @@ async function readLocks(tokenIds: ReadonlyArray<bigint>): Promise<Array<VePeppe
       amount: locked.amount,
       start: Number(locked.start),
       votingPower,
-      needsExitApproval: approved.toLowerCase() !== ESCROW.toLowerCase(),
+      needsExitApproval: !approvedForAll && approved.toLowerCase() !== ESCROW.toLowerCase(),
     };
   });
 }
@@ -341,6 +372,11 @@ export interface VePepperAccount {
   exitCooldown: number;
   /** Seconds until a lock's voting power reaches its cap (curve maxTime) */
   maxLockAge: number;
+}
+
+export interface VePepperLockState {
+  allowance: bigint;
+  delegatee: string | null;
 }
 
 export interface VotingPowerPreview {

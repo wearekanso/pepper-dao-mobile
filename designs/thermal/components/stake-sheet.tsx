@@ -32,7 +32,7 @@ interface StakeSheetProps {
  */
 export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeSheetProps) {
   const [tab, setTab] = useState<Tab>('lock');
-  const vePepper = useVePepper();
+  const vePepper = useVePepper({ enabled: visible });
   const staking = useStaking();
 
   const oldStaked = demo ? DEMO_OLD_STAKED : parseFloat(staking.formattedStakedBalance) || 0;

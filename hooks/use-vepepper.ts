@@ -23,15 +23,22 @@ import {
   createLock,
   delegateToSelf,
   fetchVePepperAccount,
+  readLockState,
   withdrawLock,
   type VePepperAccount,
   type VePepperLock,
+  type VePepperLockState,
   type VePepperTransactionResult,
 } from '@/services/vepepper-api';
 
 import { ProtectedActionError, useProtectedAction } from './use-protected-action';
 
-export function useVePepper(): UseVePepperReturn {
+/**
+ * @param options.enabled Read the account only while a screen shows it
+ *   (the sheets stay mounted while closed, so this stops the minute poll)
+ */
+export function useVePepper(options: UseVePepperOptions = {}): UseVePepperReturn {
+  const { enabled = true } = options;
   const { address, isConnected } = useWallet();
   const { provider: walletProvider } = useProvider();
   const { executeProtected, isReady } = useProtectedAction();
@@ -44,7 +51,7 @@ export function useVePepper(): UseVePepperReturn {
   const query = useQuery({
     queryKey: getVePepperQueryKey(address),
     queryFn: () => fetchVePepperAccount(address as string),
-    enabled: Boolean(address) && isConnected,
+    enabled: enabled && Boolean(address) && isConnected,
     staleTime: 30_000,
     // Exit fees fall every second; a minute keeps the shown fee close enough
     refetchInterval: 60_000,
@@ -105,10 +112,17 @@ export function useVePepper(): UseVePepperReturn {
 
   /** Lock `amount` whole PEPPER: delegate (first lock only), approve, lock */
   const lock = useCallback(
-    (amount: string) => {
-      if (!walletProvider || !account || !address) return Promise.resolve(notReady());
+    async (amount: string) => {
+      if (!walletProvider || !account || !address) return notReady();
       const value = parseUnits(amount, PEPPER_DECIMALS);
-      const steps = lockSteps(account, address, value).map((step) => ({
+      // The cached account may predate the last lock; decide the steps on fresh values
+      let state: VePepperLockState;
+      try {
+        state = await readLockState(address);
+      } catch {
+        return { success: false, error: 'Unable to reach the Chiliz network. Please try again.' };
+      }
+      const steps = lockSteps({ ...account, ...state }, address, value).map((step) => ({
         step,
         send: () => {
           if (step === 'DELEGATE') return delegateToSelf(walletProvider, address);
@@ -207,6 +221,10 @@ const VEPEPPER_QUERY_KEY = ['vepepper'] as const;
 export type VePepperStep = 'DELEGATE' | 'APPROVE' | 'LOCK' | 'APPROVE_LOCK' | 'EXIT' | 'CANCEL' | 'WITHDRAW';
 
 type VePepperTxStatus = 'idle' | 'pending' | 'success' | 'error';
+
+interface UseVePepperOptions {
+  enabled?: boolean;
+}
 
 interface VePepperOperationResult {
   success: boolean;

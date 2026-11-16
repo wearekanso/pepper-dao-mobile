@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { EXIT_FEE_BASIS_POINTS } from '@/config/vepepper';
+import { exitFeeToPercent } from '@/config/vepepper';
 import { PEPPER_DECIMALS } from '@/config/staking';
 import type { useVePepper } from '@/hooks/use-vepepper';
 import type { VePepperExit, VePepperLock } from '@/services/vepepper-api';
@@ -26,14 +26,22 @@ interface LocksTabProps {
  * the fee is 0, WITHDRAW and CANCEL.
  */
 export function LocksTab({ vePepper, onDone }: LocksTabProps) {
-  const { account, txStatus, txStep, activateVotes, beginExit, cancelExit, withdraw } = vePepper;
+  const { account, isLoading, txStatus, txStep, activateVotes, beginExit, cancelExit, withdraw } = vePepper;
   const now = useNowSeconds();
   // Exiting stops a lock's votes and starts the fee, so it asks once more
   const [confirmingExit, setConfirmingExit] = useState<bigint | null>(null);
   const [activeTokenId, setActiveTokenId] = useState<bigint | null>(null);
   const isPending = txStatus === 'pending';
 
-  if (!account) return null;
+  if (!account) {
+    // A failed read shows the sheet's retry notice; only loading needs a state here
+    return isLoading ? (
+      <View style={styles.loading}>
+        <ActivityIndicator color={THERMAL_COLORS.gold} />
+        <Text style={[TYPE.label12, { color: INK.muted }]}>READING YOUR LOCKS…</Text>
+      </View>
+    ) : null;
+  }
 
   async function act(tokenId: bigint | null, action: () => ReturnType<typeof withdraw>) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -47,7 +55,7 @@ export function LocksTab({ vePepper, onDone }: LocksTabProps) {
   }
 
   const busyLabel = (tokenId: bigint | null) => (isPending && activeTokenId === tokenId ? waitingLabel(txStep) : null);
-  const feePercent = account.exitFeeBasisPoints / (EXIT_FEE_BASIS_POINTS / 100);
+  const feePercent = exitFeeToPercent(account.exitFeeBasisPoints);
   const hasNoVotes = account.delegatee === null && account.locks.length > 0;
 
   return (
@@ -278,6 +286,11 @@ function formatDuration(seconds: number): string {
 }
 
 const styles = StyleSheet.create({
+  loading: {
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 32,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

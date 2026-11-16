@@ -64,6 +64,11 @@ export const VEPEPPER_VOTES_ADAPTER_ABI = parseAbi(VEPEPPER_VOTES_ADAPTER_ABI_HU
 /** Exit fee percents are in basis points (500 = 5%) */
 export const EXIT_FEE_BASIS_POINTS = 10_000;
 
+/** Exit queue basis points → percent for display (500 → 5) */
+export function exitFeeToPercent(basisPoints: number): number {
+  return basisPoints / (EXIT_FEE_BASIS_POINTS / 100);
+}
+
 /**
  * Custom errors the escrow can revert with (its own and the exit queue's,
  * which bubble up through it), with the message to show. They come back as

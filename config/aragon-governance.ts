@@ -67,7 +67,10 @@ export const VEPEPPER_CONTRACTS = {
   votesAdapter: PEPPER_DAO_GOVERNANCE_CONFIG.votingToken,
 } as const;
 
-/** The DAO on Aragon, where PEPPER is locked as vePEPPER until the in-app flow ships */
+/**
+ * The DAO on Aragon. The HQ and legacy designs still send users here to lock
+ * PEPPER; thermal locks in the app (designs/thermal/components/stake-sheet.tsx).
+ */
 export const ARAGON_DAO_URL = `https://app.aragon.org/dao/${PEPPER_DAO_GOVERNANCE_CONFIG.daoNetworkKey}/${PEPPER_DAO_GOVERNANCE_CONFIG.daoAddress}/dashboard`;
 
 /** Track plugin addresses, for indexing and lookups */
