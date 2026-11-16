@@ -90,6 +90,16 @@ export async function fetchVePepperAccount(userAddress: string): Promise<VePeppe
   };
 }
 
+/** The wallet's voting power as the track plugins see it */
+export async function fetchVePepperVotes(userAddress: string): Promise<bigint> {
+  return publicClient.readContract({
+    address: VOTES_ADAPTER,
+    abi: VEPEPPER_VOTES_ADAPTER_ABI,
+    functionName: 'getVotes',
+    args: [userAddress as Address],
+  });
+}
+
 /**
  * Allowance and delegatee read straight from the chain, right before a
  * lock: the cached account can still show an allowance the previous lock
@@ -215,22 +225,26 @@ async function readExits(user: Address, lastLockId: bigint): Promise<Array<VePep
   const ids = Array.from({ length: Number(lastLockId) }, (_, index) => BigInt(index + 1));
   if (ids.length === 0) return [];
 
-  const queuedIds: Array<bigint> = [];
-  for (let start = 0; start < ids.length; start += TICKET_SCAN_CHUNK) {
-    const chunk = ids.slice(start, start + TICKET_SCAN_CHUNK);
-    const holders = await publicClient.multicall({
-      // A burned or odd id must not fail the whole read
-      allowFailure: true,
-      contracts: chunk.map(
-        (tokenId) =>
-          ({ address: EXIT_QUEUE, abi: VEPEPPER_EXIT_QUEUE_ABI, functionName: 'ticketHolder', args: [tokenId] }) as const,
-      ),
-    });
-    chunk.forEach((tokenId, index) => {
-      const holder = holders[index];
-      if (holder.status === 'success' && holder.result.toLowerCase() === user.toLowerCase()) queuedIds.push(tokenId);
-    });
-  }
+  const chunks = Array.from({ length: Math.ceil(ids.length / TICKET_SCAN_CHUNK) }, (_, index) =>
+    ids.slice(index * TICKET_SCAN_CHUNK, (index + 1) * TICKET_SCAN_CHUNK),
+  );
+  // Chunks run in parallel; inside each, a burned or odd id must not fail the read
+  const queuedByChunk = await Promise.all(
+    chunks.map(async (chunk) => {
+      const holders = await publicClient.multicall({
+        allowFailure: true,
+        contracts: chunk.map(
+          (tokenId) =>
+            ({ address: EXIT_QUEUE, abi: VEPEPPER_EXIT_QUEUE_ABI, functionName: 'ticketHolder', args: [tokenId] }) as const,
+        ),
+      });
+      return chunk.filter((_, index) => {
+        const holder = holders[index];
+        return holder.status === 'success' && holder.result.toLowerCase() === user.toLowerCase();
+      });
+    }),
+  );
+  const queuedIds = queuedByChunk.flat();
   if (queuedIds.length === 0) return [];
 
   const results = await publicClient.multicall({

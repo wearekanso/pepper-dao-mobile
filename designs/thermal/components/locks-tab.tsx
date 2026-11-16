@@ -15,11 +15,6 @@ import { getHeatBarColors, PixelBar } from './pixel-bar';
 import { PixelButton } from './pixel-button';
 import { SheetSection } from './thermal-sheet';
 
-interface LocksTabProps {
-  vePepper: ReturnType<typeof useVePepper>;
-  onDone: (txHash: string | null) => void;
-}
-
 /**
  * MY LOCKS tab of the stake sheet: each lock with its voting power and an
  * EXIT button, and each queued exit with its current fee, the time until
@@ -122,20 +117,6 @@ export function LocksTab({ vePepper, onDone }: LocksTabProps) {
   );
 }
 
-interface LockRowProps {
-  lock: VePepperLock;
-  now: number;
-  maxLockAge: number;
-  exitCooldown: number;
-  feePercent: number;
-  isConfirming: boolean;
-  disabled: boolean;
-  busyLabel: string | null;
-  onExit: () => void;
-  onConfirmExit: () => void;
-  onKeep: () => void;
-}
-
 function LockRow({
   lock,
   now,
@@ -198,15 +179,6 @@ function LockRow({
   );
 }
 
-interface ExitRowProps {
-  exit: VePepperExit;
-  now: number;
-  disabled: boolean;
-  busyLabel: string | null;
-  onWithdraw: () => void;
-  onCancel: () => void;
-}
-
 function ExitRow({ exit, now, disabled, busyLabel, onWithdraw, onCancel }: ExitRowProps) {
   const amount = tokenToNumber(exit.amount, PEPPER_DECIMALS);
   const fee = tokenToNumber(exit.currentFee, PEPPER_DECIMALS);
@@ -243,13 +215,6 @@ function ExitRow({ exit, now, disabled, busyLabel, onWithdraw, onCancel }: ExitR
       </View>
     </View>
   );
-}
-
-interface TotalProps {
-  label: string;
-  value: string;
-  color: string;
-  highlight?: boolean;
 }
 
 function Total({ label, value, color, highlight = false }: TotalProps) {
@@ -309,3 +274,38 @@ const styles = StyleSheet.create({
     borderWidth: SIZE.stroke,
   },
 });
+
+interface LocksTabProps {
+  vePepper: ReturnType<typeof useVePepper>;
+  onDone: (txHash: string | null) => void;
+}
+
+interface LockRowProps {
+  lock: VePepperLock;
+  now: number;
+  maxLockAge: number;
+  exitCooldown: number;
+  feePercent: number;
+  isConfirming: boolean;
+  disabled: boolean;
+  busyLabel: string | null;
+  onExit: () => void;
+  onConfirmExit: () => void;
+  onKeep: () => void;
+}
+
+interface ExitRowProps {
+  exit: VePepperExit;
+  now: number;
+  disabled: boolean;
+  busyLabel: string | null;
+  onWithdraw: () => void;
+  onCancel: () => void;
+}
+
+interface TotalProps {
+  label: string;
+  value: string;
+  color: string;
+  highlight?: boolean;
+}

@@ -8,7 +8,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { PEPPER_DECIMALS } from '@/config/staking';
 import { useWallet } from '@/contexts/wallet-context';
 import { useStaking } from '@/hooks/use-staking';
-import { useVePepper } from '@/hooks/use-vepepper';
+import { useVePepperVotes } from '@/hooks/use-vepepper';
 import { copyToClipboard } from '@/lib/clipboard';
 import { fetchNativeBalance } from '@/services/chiliz-api';
 
@@ -40,7 +40,8 @@ export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAcc
   const walletName = demo ? DEMO_WALLET.walletName : walletInfo?.name;
   const staking = useStaking();
   // Voting power is the wallet's vePEPPER votes; the old staking contract gives none
-  const { account: vePepperAccount, isLoading: isVePepperLoading } = useVePepper({ enabled: visible });
+  // Only the votes: no need for the full account read with its exit scan
+  const { data: vePepperVotes, isLoading: isVePepperLoading } = useVePepperVotes({ enabled: visible });
   const isLoading = demo ? false : staking.isLoading;
   const [copied, setCopied] = useState(false);
   const { data: native } = useQuery({
@@ -78,8 +79,8 @@ export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAcc
   const pepper = demo ? DEMO_WALLET.pepper : parseFloat(staking.formattedWalletBalance) || 0;
   const vePepper = demo
     ? DEMO_VOTES
-    : vePepperAccount
-      ? tokenToNumber(vePepperAccount.votes, PEPPER_DECIMALS)
+    : vePepperVotes !== undefined
+      ? tokenToNumber(vePepperVotes, PEPPER_DECIMALS)
       : null;
   const chz = demo ? DEMO_WALLET.chz : native ? tokenToNumber(native.balance, 18) : null;
   const balances = [

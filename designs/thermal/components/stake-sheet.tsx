@@ -15,14 +15,6 @@ import { HardShadow } from './panel';
 import { PixelButton } from './pixel-button';
 import { SheetSection, ThermalSheet } from './thermal-sheet';
 
-interface StakeSheetProps {
-  visible: boolean;
-  onClose: () => void;
-  onSuccess?: (txHash: string) => void;
-  /** Dev-only demo screens: demo wallet balance; submitting just closes */
-  demo?: boolean;
-}
-
 /**
  * Lock PEPPER as vePEPPER and manage locks (useVePepper). Tabs:
  * - LOCK: new lock with voting power preview
@@ -30,7 +22,7 @@ interface StakeSheetProps {
  * - OLD STAKING: only while the wallet still has PEPPER in the retired
  *   staking contract, which gives no votes; unstake only
  */
-export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeSheetProps) {
+export function StakeSheet({ visible, onClose, demo = false }: StakeSheetProps) {
   const [tab, setTab] = useState<Tab>('lock');
   const vePepper = useVePepper({ enabled: visible });
   const staking = useStaking();
@@ -44,6 +36,7 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
   function handleClose() {
     // Reopening starts clean: no prefilled amount one tap away from a lock
     vePepper.resetTx();
+    staking.resetTx();
     lockTab.reset();
     oldStakingTab.reset();
     setTab('lock');
@@ -57,7 +50,7 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
     setTab(next);
   }
 
-  function handleDone(txHash: string | null, nextTab: Tab) {
+  function handleDone(nextTab: Tab) {
     if (demo) {
       handleClose();
       return;
@@ -65,11 +58,10 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
     setTab(nextTab);
     // Unstaking moves PEPPER into the wallet: the lock tab needs the new balance
     if (nextTab === 'lock') void vePepper.refetch();
-    if (txHash) onSuccess?.(txHash);
   }
 
-  const lockTab = useLockTab({ vePepper, demo, onDone: (txHash) => handleDone(txHash, 'locks') });
-  const oldStakingTab = useOldStakingTab({ staking, oldStaked, demo, onDone: (txHash) => handleDone(txHash, 'lock') });
+  const lockTab = useLockTab({ vePepper, demo, onDone: () => handleDone('locks') });
+  const oldStakingTab = useOldStakingTab({ staking, oldStaked, demo, onDone: () => handleDone('lock') });
 
   const footer = tab === 'lock' ? lockTab.footer : tab === 'old' ? oldStakingTab.footer : undefined;
   const loadError = !demo && vePepper.error && !vePepper.account;
@@ -107,7 +99,7 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
 
       {tab === 'lock' ? lockTab.body : null}
       {tab === 'locks' ? (
-        <LocksTab vePepper={shownVePepper} onDone={(txHash) => handleDone(txHash, 'locks')} />
+        <LocksTab vePepper={shownVePepper} onDone={() => handleDone('locks')} />
       ) : null}
       {tab === 'old' ? oldStakingTab.body : null}
 
@@ -115,14 +107,6 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
       {tab === 'old' && staking.txError ? <TxError message={staking.txError} /> : null}
     </ThermalSheet>
   );
-}
-
-interface UseOldStakingTabOptions {
-  staking: ReturnType<typeof useStaking>;
-  oldStaked: number;
-  /** Dev-only demo: checks the amount against the demo stake; submitting just closes */
-  demo: boolean;
-  onDone: (txHash: string | null) => void;
 }
 
 /** Unstake from the retired staking contract (it gives no votes), then lock */
@@ -288,3 +272,18 @@ const styles = StyleSheet.create({
     borderColor: STATUS_COLORS.negative.stroke,
   },
 });
+
+interface StakeSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  /** Dev-only demo screens: demo wallet balance; submitting just closes */
+  demo?: boolean;
+}
+
+interface UseOldStakingTabOptions {
+  staking: ReturnType<typeof useStaking>;
+  oldStaked: number;
+  /** Dev-only demo: checks the amount against the demo stake; submitting just closes */
+  demo: boolean;
+  onDone: (txHash: string | null) => void;
+}

@@ -9,6 +9,7 @@ import { exitFeeToPercent } from '@/config/vepepper';
 import type { VePepperStep, useVePepper } from '@/hooks/use-vepepper';
 import { previewVotingPower } from '@/services/vepepper-api';
 
+import { createDemoVePepperAccount } from '../lib/demo-power';
 import { formatAmount, formatCompact, formatInteger, tokenToNumber } from '../lib/format';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 import { FilterChip } from './atoms';
@@ -16,13 +17,6 @@ import { HardShadow } from './panel';
 import { getHeatBarColors, PixelBar } from './pixel-bar';
 import { PixelButton } from './pixel-button';
 import { SheetSection } from './thermal-sheet';
-
-interface UseLockTabOptions {
-  vePepper: ReturnType<typeof useVePepper>;
-  /** Dev-only demo: demo wallet balance; submitting just closes */
-  demo: boolean;
-  onDone: (txHash: string | null) => void;
-}
 
 /**
  * LOCK tab of the stake sheet: amount, minimum, voting power preview and
@@ -39,8 +33,9 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
 
   // Unknown until the account loads: no balance errors or MAX until then
   const isAccountReady = demo || Boolean(account);
-  const walletBalance = demo ? DEMO_BALANCE : account ? tokenToNumber(account.walletBalance, PEPPER_DECIMALS) : 0;
-  const minDeposit = demo ? DEMO_MIN_DEPOSIT : account ? tokenToNumber(account.minDeposit, PEPPER_DECIMALS) : 0;
+  const shownAccount = demo ? DEMO_ACCOUNT : account;
+  const walletBalance = shownAccount ? tokenToNumber(shownAccount.walletBalance, PEPPER_DECIMALS) : 0;
+  const minDeposit = shownAccount ? tokenToNumber(shownAccount.minDeposit, PEPPER_DECIMALS) : 0;
   const amountNum = parseFloat(amount) || 0;
   const value = amount ? parseUnits(amount, PEPPER_DECIMALS) : BigInt(0);
   const isPending = txStatus === 'pending';
@@ -69,8 +64,8 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
   const atMax = preview.data ? tokenToNumber(preview.data.atMax, PEPPER_DECIMALS) : 0;
   const startShare = atMax > 0 ? atStart / atMax : 0;
   const maxMultiplier = atStart > 0 ? Number((atMax / atStart).toFixed(1)) : 3;
-  const exitFeePercent = exitFeeToPercent(account?.exitFeeBasisPoints ?? DEMO_EXIT_FEE_BASIS_POINTS);
-  const exitCooldown = account?.exitCooldown ?? DEMO_EXIT_COOLDOWN;
+  const exitFeePercent = exitFeeToPercent(shownAccount?.exitFeeBasisPoints ?? DEFAULT_EXIT_FEE_BASIS_POINTS);
+  const exitCooldown = shownAccount?.exitCooldown ?? DEFAULT_EXIT_COOLDOWN;
 
   function reset() {
     setAmount('');
@@ -212,13 +207,6 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
   return { body, footer, reset };
 }
 
-interface PowerValueProps {
-  label: string;
-  value: string;
-  color: string;
-  align?: 'left' | 'right';
-}
-
 function PowerValue({ label, value, color, align = 'left' }: PowerValueProps) {
   return (
     <View style={{ gap: 2, alignItems: align === 'left' ? 'flex-start' : 'flex-end' }}>
@@ -272,11 +260,12 @@ export const STEP_LABELS: Record<VePepperStep, string> = {
   WITHDRAW: 'WITHDRAW',
 };
 
-const DEMO_BALANCE = 12_400_000_000;
-const DEMO_MIN_DEPOSIT = 8_888_888_888;
+/** Demo screens: the demo wallet's account, shared with the other demo sheets */
+const DEMO_ACCOUNT = createDemoVePepperAccount();
 const DEMO_STEPS: Array<VePepperStep> = ['DELEGATE', 'APPROVE', 'LOCK'];
-const DEMO_EXIT_FEE_BASIS_POINTS = 500;
-const DEMO_EXIT_COOLDOWN = 7 * 86_400;
+/** Shown in the exit note until the account (with the live values) has loaded */
+const DEFAULT_EXIT_FEE_BASIS_POINTS = 500;
+const DEFAULT_EXIT_COOLDOWN = 7 * 86_400;
 const WEEK_SECONDS = 7 * 86_400;
 
 const styles = StyleSheet.create({
@@ -335,3 +324,17 @@ const styles = StyleSheet.create({
     borderLeftColor: THERMAL_COLORS.amber,
   },
 });
+
+interface UseLockTabOptions {
+  vePepper: ReturnType<typeof useVePepper>;
+  /** Dev-only demo: demo wallet balance; submitting just closes */
+  demo: boolean;
+  onDone: (txHash: string | null) => void;
+}
+
+interface PowerValueProps {
+  label: string;
+  value: string;
+  color: string;
+  align?: 'left' | 'right';
+}

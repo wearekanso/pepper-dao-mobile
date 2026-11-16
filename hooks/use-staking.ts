@@ -73,6 +73,8 @@ interface UseStakingReturn {
 
   // Utilities
   refetch: () => void;
+  /** Clear the last transaction's status and error */
+  resetTx: () => void;
   isReady: boolean;
 }
 
@@ -162,6 +164,11 @@ export function useStaking(): UseStakingReturn {
     },
     [stakingData]
   );
+
+  const resetTx = useCallback(() => {
+    setTxStatus('idle');
+    setTxError(null);
+  }, []);
 
   // Invalidate and refetch staking data
   const invalidateStakingData = useCallback(() => {
@@ -396,6 +403,7 @@ export function useStaking(): UseStakingReturn {
 
     // Utilities
     refetch,
+    resetTx,
     isReady,
   };
 }
