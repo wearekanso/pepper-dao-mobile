@@ -177,7 +177,7 @@ export function PulseScreen() {
 
       <View style={[styles.row, { gap: 12 }]}>
         <PixelButton label="GET PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => void handleGetPepper()} />
-        <PixelButton label="STAKE PEPPER" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
+        <PixelButton label="LOCK PEPPER" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
       </View>
 
       <View style={{ gap: 8 }}>
