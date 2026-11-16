@@ -7,10 +7,11 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useWallet } from '@/contexts/wallet-context';
 import { useStaking } from '@/hooks/use-staking';
+import { useVePepper } from '@/hooks/use-vepepper';
 import { copyToClipboard } from '@/lib/clipboard';
 import { fetchNativeBalance } from '@/services/chiliz-api';
 
-import { DEMO_WALLET } from '../lib/demo-power';
+import { createDemoVePepperAccount, DEMO_WALLET } from '../lib/demo-power';
 import { formatAmount, shortenAddress, tokenToNumber } from '../lib/format';
 import { FEEDBACK_HOLD_MS } from '../motion';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
@@ -37,6 +38,8 @@ export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAcc
   const { walletInfo } = useWalletInfo();
   const walletName = demo ? DEMO_WALLET.walletName : walletInfo?.name;
   const staking = useStaking();
+  // Voting power is the wallet's vePEPPER votes; the old staking contract gives none
+  const { account: vePepperAccount, isLoading: isVePepperLoading } = useVePepper();
   const isLoading = demo ? false : staking.isLoading;
   const [copied, setCopied] = useState(false);
   const { data: native } = useQuery({
@@ -72,11 +75,20 @@ export function WalletAccountSheet({ visible, onClose, demo = false }: WalletAcc
   }
 
   const pepper = demo ? DEMO_WALLET.pepper : parseFloat(staking.formattedWalletBalance) || 0;
-  const vePepper = demo ? DEMO_WALLET.vePepper : parseFloat(staking.formattedStakedBalance) || 0;
+  const vePepper = demo
+    ? tokenToNumber(createDemoVePepperAccount().votes, 18)
+    : vePepperAccount
+      ? tokenToNumber(vePepperAccount.votes, 18)
+      : null;
   const chz = demo ? DEMO_WALLET.chz : native ? tokenToNumber(native.balance, 18) : null;
   const balances = [
     { label: 'PEPPER', value: isLoading ? '…' : formatAmount(pepper), hint: 'in wallet' },
-    { label: 'vePEPPER', value: isLoading ? '…' : formatAmount(vePepper), hint: 'voting power' },
+    {
+      label: 'vePEPPER',
+      // '…' only while loading; a failed read shows a dash instead of spinning
+      value: vePepper !== null ? formatAmount(vePepper) : isVePepperLoading ? '…' : '–',
+      hint: 'voting power',
+    },
     { label: 'CHZ', value: chz === null ? '…' : formatAmount(chz), hint: 'for gas' },
   ];
 
