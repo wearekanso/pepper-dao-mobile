@@ -46,6 +46,8 @@ export interface Database {
           transaction_hash: string | null;
           display_index: number | null;
           creator: string | null;
+          /** ipfs:// URI still to fetch; title/description are placeholders until then */
+          metadata_pending_uri: string | null;
         };
         Insert: Omit<
           Database['public']['Tables']['proposals']['Row'],

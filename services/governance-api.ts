@@ -371,7 +371,8 @@ export async function getSyncState(): Promise<{
     const { data, error } = await supabase
       .from('sync_state')
       .select('*')
-      .eq('id', 'default')
+      // The MainDao indexer's own row (the old indexer used 'default')
+      .eq('id', 'main_dao')
       .single();
 
     if (error || !data) {

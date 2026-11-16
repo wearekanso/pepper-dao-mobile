@@ -54,6 +54,17 @@ const TRACK_PLUGIN_ADDRESSES_LOWER = TRACK_PLUGIN_ADDRESSES.map((address) => add
  */
 const FIRST_INDEXED_BLOCK = BigInt(34_100_000);
 
+/**
+ * sync_state row for this indexer. The old DAO's indexer wrote 'default'; a
+ * separate row means an old run still going before this one is deployed
+ * can't move the cursor past the track plugins' blocks.
+ * Created by migration 20261116000000.
+ */
+const SYNC_STATE_ID = 'main_dao';
+
+/** Proposals whose IPFS metadata is retried per run, so retries can't eat the time budget */
+const MAX_METADATA_RETRIES_PER_RUN = 10;
+
 /** Aragon's IPFS gateway: the public ipfs.io / dweb.link gateways now answer 429 */
 const IPFS_GATEWAY = 'https://aragon-1.mypinata.cloud/ipfs/';
 const IPFS_TIMEOUT_MS = 10_000;
@@ -217,6 +228,8 @@ interface ProposalData {
   block_number: number;
   transaction_hash: string;
   creator: string;  // Wallet address that created the proposal
+  /** Set while the title/description are placeholders because IPFS failed */
+  metadata_pending_uri: string | null;
 }
 
 interface OnChainProposal {
@@ -240,6 +253,8 @@ interface FailedProposal {
 interface ProposalMetadata {
   title: string | null;
   description: string | null;
+  /** ipfs:// URI whose fetch failed this time; stored so a later run retries it */
+  pendingUri: string | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -269,7 +284,7 @@ Deno.serve(async (req: Request) => {
     const { data: syncState, error: syncError } = await supabase
       .from('sync_state')
       .select('*')
-      .eq('id', 'default')
+      .eq('id', SYNC_STATE_ID)
       .single();
 
     if (syncError) {
@@ -310,7 +325,7 @@ Deno.serve(async (req: Request) => {
     const { data: lockRows, error: lockError } = await supabase
       .from('sync_state')
       .update({ sync_in_progress: true, sync_started_at: new Date().toISOString(), error_message: null })
-      .eq('id', 'default')
+      .eq('id', SYNC_STATE_ID)
       .or(
         `sync_in_progress.is.null,sync_in_progress.eq.false,sync_started_at.is.null,sync_started_at.lt."${staleBefore}"`,
       )
@@ -496,6 +511,7 @@ Deno.serve(async (req: Request) => {
           block_number: Number(log.blockNumber),
           transaction_hash: log.transactionHash,
           creator: (log.args.creator as string).toLowerCase(),
+          metadata_pending_uri: metadata.pendingUri,
         };
 
         newProposals.push(proposalData);
@@ -596,6 +612,50 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Retry IPFS metadata that failed when the proposal was inserted, so a
+    // gateway hiccup doesn't leave a placeholder title for good. This covers
+    // finished proposals too, which the refresh above no longer touches.
+    let metadataFixedCount = 0;
+    if (elapsedMs() < REFRESH_BUDGET_MS) {
+      const { data: pendingMetadata, error: pendingError } = await supabase
+        .from('proposals')
+        .select('proposal_id, plugin_address, metadata_pending_uri')
+        .in('plugin_address', TRACK_PLUGIN_ADDRESSES_LOWER)
+        .not('metadata_pending_uri', 'is', null)
+        .order('block_number', { ascending: true })
+        .limit(MAX_METADATA_RETRIES_PER_RUN);
+
+      if (pendingError) {
+        console.error('Failed to load proposals with pending metadata:', pendingError);
+      }
+
+      for (const prop of pendingMetadata ?? []) {
+        if (elapsedMs() > REFRESH_BUDGET_MS) {
+          break;
+        }
+        const metadata = await fetchIpfsMetadata(prop.metadata_pending_uri);
+        if (metadata.pendingUri) {
+          continue; // Still failing: try again next run
+        }
+        const { error: metadataError } = await supabase
+          .from('proposals')
+          .update({
+            // Keep the placeholder when the document has no title or body
+            ...(metadata.title ? { title: metadata.title } : {}),
+            ...(metadata.description ? { description: metadata.description } : {}),
+            metadata_pending_uri: null,
+          })
+          .eq('proposal_id', prop.proposal_id)
+          .eq('plugin_address', prop.plugin_address);
+
+        if (metadataError) {
+          console.error(`Failed to store metadata for proposal ${prop.proposal_id}:`, metadataError);
+          continue;
+        }
+        metadataFixedCount++;
+      }
+    }
+
     // Update sync state with where we actually got to. If a proposal failed,
     // stop just before its block: the next run starts there again (proposals
     // already stored in that block are skipped by the "already exists" check).
@@ -615,7 +675,7 @@ Deno.serve(async (req: Request) => {
             ? `Proposal ${failedProposal.proposalId} at block ${failedProposal.blockNumber} not indexed yet: ${failedProposal.reason}`.slice(0, 500)
             : null,
       })
-      .eq('id', 'default');
+      .eq('id', SYNC_STATE_ID);
 
     return new Response(
       JSON.stringify({
@@ -623,6 +683,7 @@ Deno.serve(async (req: Request) => {
         message: `Synced to block ${syncedToBlock}`,
         newProposals: newProposals.length,
         updatedProposals: updatedCount,
+        metadataFixed: metadataFixedCount,
         retryProposalId: failedProposal?.proposalId ?? null,
         needsMoreSync,
         latestBlock: Number(latestBlock),
@@ -658,7 +719,7 @@ Deno.serve(async (req: Request) => {
             sync_in_progress: false,
             error_message: errorMessage.slice(0, 500),  // Truncate for DB
           })
-          .eq('id', 'default');
+          .eq('id', SYNC_STATE_ID);
       } catch (e) {
         console.error('Failed to update sync state with error:', e);
       }
@@ -774,11 +835,15 @@ function deriveStatus(proposal: OnChainProposal, succeeded: boolean, startDate: 
 async function loadNextDisplayIndexes(supabase: any): Promise<Record<string, number>> {
   const next: Record<string, number> = {};
   for (const address of TRACK_PLUGIN_ADDRESSES_LOWER) {
-    const { count } = await supabase
+    const { count, error } = await supabase
       .from('proposals')
       .select('id', { count: 'exact', head: true })
       .eq('plugin_address', address);
-    next[address] = (count ?? 0) + 1;
+    // Starting over at 1 would store duplicate keys (two PAT-1s): abort and retry next run
+    if (error || count === null) {
+      throw new Error(`Could not count proposals for ${address}: ${error?.message ?? 'no count'}`);
+    }
+    next[address] = count + 1;
   }
   return next;
 }
@@ -810,30 +875,41 @@ async function loadMinParticipation(publicClient: any): Promise<Record<string, n
  */
 async function decodeMetadata(rawHex: string): Promise<ProposalMetadata> {
   if (!rawHex || rawHex.length <= 2) {
-    return { title: null, description: null };
+    return { title: null, description: null, pendingUri: null };
   }
 
   try {
     const metadataStr = sanitizeForPostgres(hexToString(rawHex as `0x${string}`)).trim();
 
     if (metadataStr.startsWith('ipfs://')) {
-      const json = await fetchIpfsJson(metadataStr.slice('ipfs://'.length));
-      return json ? fromMetadataJson(json) : { title: null, description: metadataStr };
+      return await fetchIpfsMetadata(metadataStr);
     }
 
     if (metadataStr.startsWith('{')) {
-      return fromMetadataJson(JSON.parse(metadataStr));
+      return { ...fromMetadataJson(JSON.parse(metadataStr)), pendingUri: null };
     }
 
     // Plain text metadata
-    return { title: metadataStr.slice(0, 100) || null, description: null };
+    return { title: metadataStr.slice(0, 100) || null, description: null, pendingUri: null };
   } catch (e) {
     console.log('Could not decode metadata:', e);
-    return { title: null, description: null };
+    return { title: null, description: null, pendingUri: null };
   }
 }
 
-function fromMetadataJson(json: Record<string, unknown>): ProposalMetadata {
+/**
+ * Fetch ipfs:// metadata. A failed fetch (gateway rate limit, timeout) is
+ * not final: the URI comes back as pendingUri and a later run retries it.
+ */
+async function fetchIpfsMetadata(uri: string): Promise<ProposalMetadata> {
+  const json = await fetchIpfsJson(uri.slice('ipfs://'.length));
+  if (!json) {
+    return { title: null, description: null, pendingUri: uri };
+  }
+  return { ...fromMetadataJson(json), pendingUri: null };
+}
+
+function fromMetadataJson(json: Record<string, unknown>): Omit<ProposalMetadata, 'pendingUri'> {
   const title = typeof json.title === 'string' ? sanitizeForPostgres(json.title).trim() : '';
   const summary = typeof json.summary === 'string' ? htmlToText(json.summary) : '';
   const body = typeof json.description === 'string' ? htmlToText(json.description) : '';
