@@ -30,6 +30,12 @@ interface ThermalSheetProps {
   footer?: ReactNode;
   /** Blocks closing while a transaction is in flight */
   locked?: boolean;
+  /**
+   * Keep the sheet at full height instead of fitting its content, for
+   * sheets whose content changes (tabs, previews) so they don't jump.
+   * The body scrolls inside; it still shrinks for the keyboard.
+   */
+  fullHeight?: boolean;
 }
 
 /**
@@ -38,7 +44,16 @@ interface ThermalSheetProps {
  * body and a pinned footer. Slides up once without bounce; drag the nav bar
  * down, tap the scrim or the close button to dismiss.
  */
-export function ThermalSheet({ visible, onClose, title, subtitle, children, footer, locked = false }: ThermalSheetProps) {
+export function ThermalSheet({
+  visible,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+  locked = false,
+  fullHeight = false,
+}: ThermalSheetProps) {
   const [isMounted, setIsMounted] = useState(visible);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -94,10 +109,19 @@ export function ThermalSheet({ visible, onClose, title, subtitle, children, foot
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboard}
+        // Top padding keeps the sheet below the status bar when the keyboard shrinks it
+        style={[styles.keyboard, { paddingTop: insets.top + 24 }]}
         pointerEvents="box-none"
       >
-        <Animated.View style={[styles.sheet, { maxHeight: height - insets.top - 24 }, sheetStyle]}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            { maxHeight: height - insets.top - 24 },
+            // flexBasis + flexShrink: full height, but it gives way to the keyboard
+            fullHeight && { flexBasis: height - insets.top - 24, flexShrink: 1 },
+            sheetStyle,
+          ]}
+        >
           <View {...panResponder.panHandlers} style={styles.nav}>
             <NavIconButton icon="close" onPress={requestClose} disabled={locked} />
             <Text style={[TYPE.label14, styles.title]} numberOfLines={1}>
@@ -107,6 +131,7 @@ export function ThermalSheet({ visible, onClose, title, subtitle, children, foot
           </View>
 
           <ScrollView
+            style={fullHeight ? styles.fill : undefined}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.content, !footer && { paddingBottom: insets.bottom + 24 }]}
@@ -162,6 +187,9 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 8,
+  },
+  fill: {
+    flex: 1,
   },
   navSpacer: {
     width: SIZE.navButton,

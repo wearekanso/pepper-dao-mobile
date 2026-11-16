@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -111,27 +111,36 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
           </View>
         </View>
 
-        <View style={{ flex: 1 }} />
+        {/*
+          Content sits at the bottom, above the buttons. On short screens
+          (iPhone SE) it scrolls, so the buttons always stay on screen.
+        */}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.stepScroll}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Content swaps in place (cross-fade), it doesn't slide to a new page */}
+          <Animated.View key={step.title} entering={fadeIn()} exiting={fadeOut()} style={styles.step}>
+            <Mascot rank={step.mascot} size={height < SHORT_SCREEN_HEIGHT ? MASCOT_SIZE_SHORT : MASCOT_SIZE} />
 
-        {/* Content swaps in place (cross-fade), it doesn't slide to a new page */}
-        <Animated.View key={step.title} entering={fadeIn()} exiting={fadeOut()} style={styles.step}>
-          <Mascot rank={step.mascot} />
-
-          {step.kind === 'wallet' ? (
-            <WalletStep />
-          ) : (
-            <>
-              <View style={styles.badge}>
-                <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{step.badge}</Text>
-              </View>
-              {step.kind === 'levels' ? <LevelLadder /> : <ChipRow chips={step.chips} />}
-              <View style={styles.copy}>
-                <Text style={[TYPE.display40, styles.title]}>{step.title}</Text>
-                <Text style={[TYPE.meta18, styles.body]}>{step.body}</Text>
-              </View>
-            </>
-          )}
-        </Animated.View>
+            {step.kind === 'wallet' ? (
+              <WalletStep />
+            ) : (
+              <>
+                <View style={styles.badge}>
+                  <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{step.badge}</Text>
+                </View>
+                {step.kind === 'levels' ? <LevelLadder /> : <ChipRow chips={step.chips} />}
+                <View style={styles.copy}>
+                  <Text style={[TYPE.display40, styles.title]}>{step.title}</Text>
+                  <Text style={[TYPE.meta18, styles.body]}>{step.body}</Text>
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </ScrollView>
 
         <View style={{ gap: 12 }}>
           {isLast ? (
@@ -148,10 +157,8 @@ export function OnboardingScreen({ onComplete, onSkip }: OnboardingScreenProps) 
   );
 }
 
-function Mascot({ rank }: { rank: Rank }) {
-  return (
-    <Image source={RANK_IMAGES[rank] as number} style={{ width: MASCOT_SIZE, height: MASCOT_SIZE }} contentFit="contain" />
-  );
+function Mascot({ rank, size }: { rank: Rank; size: number }) {
+  return <Image source={RANK_IMAGES[rank] as number} style={{ width: size, height: size }} contentFit="contain" />;
 }
 
 function ChipRow({ chips }: { chips: Array<{ label: string; color: string }> }) {
@@ -280,7 +287,7 @@ const STEPS: Array<Step> = [
       { label: 'ABSTAIN', color: VOTE_COLORS.ABSTAIN },
     ],
     title: 'DECIDE TOGETHER',
-    body: 'Vote with staked PEPPER. Every vote is recorded on Chiliz Chain and counts.',
+    body: 'Vote with locked PEPPER. Every vote is recorded on Chiliz Chain and counts.',
   },
   {
     kind: 'levels',
@@ -319,6 +326,9 @@ const MODES = [
 ];
 
 const MASCOT_SIZE = 190;
+/** Smaller mascot below this window height (iPhone SE is 667pt) */
+const SHORT_SCREEN_HEIGHT = 700;
+const MASCOT_SIZE_SHORT = 130;
 const TOP_FADE = 120;
 /** Upcoming progress cells (Figma: 20% white) */
 const PROGRESS_TODO = 'rgba(255,255,255,0.2)';
@@ -361,6 +371,10 @@ const styles = StyleSheet.create({
   progressCell: {
     width: PROGRESS_CELL,
     height: 6,
+  },
+  stepScroll: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   step: {
     alignItems: 'center',

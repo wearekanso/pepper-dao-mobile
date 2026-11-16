@@ -1,160 +1,168 @@
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
-import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import { type ReactNode, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ARAGON_DAO_URL } from '@/config/aragon-governance';
-import { STAKING_DEPOSITS_ENABLED } from '@/config/features';
 import { useStaking } from '@/hooks/use-staking';
+import { useVePepper } from '@/hooks/use-vepepper';
 
-import { DEMO_WALLET } from '../lib/demo-power';
+import { createDemoVePepperAccount, DEMO_OLD_STAKED } from '../lib/demo-power';
 import { formatAmount, formatInteger } from '../lib/format';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 import { FilterChip, Touchable } from './atoms';
+import { useLockTab } from './lock-tab';
+import { LocksTab } from './locks-tab';
 import { HardShadow } from './panel';
 import { PixelButton } from './pixel-button';
 import { SheetSection, ThermalSheet } from './thermal-sheet';
 
-interface StakeSheetProps {
-  visible: boolean;
-  onClose: () => void;
-  onSuccess?: (txHash: string, operation: Operation) => void;
-  /** Dev-only demo screens: demo wallet balances; submitting just closes */
-  demo?: boolean;
-}
-
 /**
- * Stake / unstake PEPPER for vePEPPER voting power. Same flow as the legacy
- * StakeModal (approve → stake, or unstake) on top of useStaking.
- *
- * While STAKING_DEPOSITS_ENABLED is off it is unstake-only: the old staking
- * contract gives no voting power, so it points to Aragon for locking and
- * only lets holders take their PEPPER out.
+ * Lock PEPPER as vePEPPER and manage locks (useVePepper). Tabs:
+ * - LOCK: new lock with voting power preview
+ * - MY LOCKS: locks, exits with their fee, withdraw / cancel
+ * - OLD STAKING: only while the wallet still has PEPPER in the retired
+ *   staking contract, which gives no votes; unstake only
  */
-export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeSheetProps) {
-  const [mode, setMode] = useState<Operation>(STAKING_DEPOSITS_ENABLED ? 'stake' : 'unstake');
-  const [amount, setAmount] = useState('');
+export function StakeSheet({ visible, onClose, demo = false }: StakeSheetProps) {
+  const [tab, setTab] = useState<Tab>('lock');
+  const vePepper = useVePepper({ enabled: visible });
   const staking = useStaking();
-  const { stakingData, error: queryError, txStatus, txError, approve, stake, unstake, refetch } = staking;
-  const isLoading = demo ? false : staking.isLoading;
 
-  const isPending = txStatus === 'pending';
-  const walletBalance = demo ? DEMO_WALLET.pepper : parseFloat(staking.formattedWalletBalance) || 0;
-  const stakedBalance = demo ? DEMO_WALLET.vePepper : parseFloat(staking.formattedStakedBalance) || 0;
-  // The demo wallet has never approved staking, so it shows the two-step flow
-  const canStake = (value: string) => (demo ? (parseFloat(value) || 0) <= walletBalance : staking.canStake(value));
-  const canUnstake = (value: string) => (demo ? (parseFloat(value) || 0) <= stakedBalance : staking.canUnstake(value));
-  const needsApproval = (value: string) => (demo ? true : staking.needsApproval(value));
-  const maxAmount = mode === 'stake' ? walletBalance : stakedBalance;
-  const amountNum = parseFloat(amount) || 0;
-
-  const isStake = mode === 'stake';
-  const requiresApproval = isStake && amountNum > 0 && needsApproval(amount);
-  const isValid = amountNum > 0 && (isStake ? canStake(amount) || requiresApproval : canUnstake(amount));
-  const inputError =
-    amountNum > 0 && !isValid ? (isStake ? 'NOT ENOUGH PEPPER IN WALLET' : 'NOT ENOUGH STAKED PEPPER') : null;
+  const oldStaked = demo ? DEMO_OLD_STAKED : parseFloat(staking.formattedStakedBalance) || 0;
+  const hasOldStake = oldStaked > 0;
+  const shownVePepper = demo ? demoVePepper(vePepper) : vePepper;
+  const lockCount = shownVePepper.account ? shownVePepper.account.locks.length + shownVePepper.account.exits.length : 0;
+  const isPending = vePepper.txStatus === 'pending' || staking.txStatus === 'pending';
 
   function handleClose() {
-    setAmount('');
+    // Reopening starts clean: no prefilled amount one tap away from a lock
+    vePepper.resetTx();
+    staking.resetTx();
+    lockTab.reset();
+    oldStakingTab.reset();
+    setTab('lock');
     onClose();
   }
 
-  function selectMode(next: Operation) {
-    setMode(next);
-    setAmount('');
+  function selectTab(next: Tab) {
+    // Switching mid-transaction would reset txStatus and unlock the sheet
+    if (isPending) return;
+    vePepper.resetTx();
+    setTab(next);
   }
 
-  function setPercent(percent: number) {
-    void Haptics.selectionAsync();
-    setAmount(maxAmount > 0 ? String(Math.floor((maxAmount * percent) / 100)) : '0');
-  }
-
-  async function handleSubmit() {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  function handleDone(nextTab: Tab) {
     if (demo) {
       handleClose();
       return;
     }
-
-    if (isStake) {
-      if (requiresApproval) {
-        const approval = await approve(amount);
-        if (!approval.success) return;
-      }
-      const result = await stake(amount);
-      if (result.success && result.txHash) finish(result.txHash, 'stake');
-      return;
-    }
-
-    const result = await unstake(amount);
-    if (result.success && result.txHash) finish(result.txHash, 'unstake');
+    setTab(nextTab);
+    // Unstaking moves PEPPER into the wallet: the lock tab needs the new balance
+    if (nextTab === 'lock') void vePepper.refetch();
   }
 
-  function finish(txHash: string, operation: Operation) {
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setAmount('');
-    onClose();
-    onSuccess?.(txHash, operation);
-  }
+  const lockTab = useLockTab({ vePepper, demo, onDone: () => handleDone('locks') });
+  const oldStakingTab = useOldStakingTab({ staking, oldStaked, demo, onDone: () => handleDone('lock') });
 
-  const submitLabel = isPending
-    ? 'SIGN IN YOUR WALLET…'
-    : isStake
-      ? requiresApproval
-        ? 'APPROVE & STAKE >'
-        : 'STAKE PEPPER >'
-      : 'UNSTAKE PEPPER >';
+  const footer = tab === 'lock' ? lockTab.footer : tab === 'old' ? oldStakingTab.footer : undefined;
+  const loadError = !demo && vePepper.error && !vePepper.account;
 
   return (
     <ThermalSheet
       visible={visible}
       onClose={handleClose}
       locked={isPending}
-      title={isStake ? 'STAKE PEPPER' : 'UNSTAKE PEPPER'}
-      footer={
-        <PixelButton
-          label={submitLabel}
-          variant="gold"
-          disabled={!isValid || isPending}
-          style={{ flex: 1 }}
-          onPress={() => void handleSubmit()}
-        />
-      }
+      title={TITLES[tab]}
+      footer={footer}
+      fullHeight
     >
-      {STAKING_DEPOSITS_ENABLED ? (
-        <>
-          <Text style={TYPE.body14}>Staked PEPPER becomes vePEPPER: your voting power, plus +5 REP every week.</Text>
-
-          <View style={styles.row}>
-            <FilterChip label="STAKE" isActive={isStake} onPress={() => selectMode('stake')} style={{ flex: 1 }} />
-            <FilterChip label="UNSTAKE" isActive={!isStake} onPress={() => selectMode('unstake')} style={{ flex: 1 }} />
-          </View>
-        </>
-      ) : (
-        <StakingMovedNotice />
-      )}
-
-      <View style={[styles.row, { gap: 12 }]}>
-        <Balance label="IN WALLET" value={isLoading ? '…' : formatAmount(walletBalance)} highlight={isStake} />
-        <Balance label="STAKED" value={isLoading ? '…' : formatAmount(stakedBalance)} highlight={!isStake} />
+      <View style={styles.row}>
+        <FilterChip label="LOCK" isActive={tab === 'lock'} onPress={() => selectTab('lock')} style={{ flex: 1 }} />
+        <FilterChip
+          label={lockCount > 0 ? `MY LOCKS · ${lockCount}` : 'MY LOCKS'}
+          isActive={tab === 'locks'}
+          onPress={() => selectTab('locks')}
+          style={{ flex: 1 }}
+        />
+        {hasOldStake ? (
+          <FilterChip label="OLD STAKING" isActive={tab === 'old'} onPress={() => selectTab('old')} style={{ flex: 1 }} />
+        ) : null}
       </View>
 
-      {queryError && !stakingData ? (
+      {loadError ? (
         <View style={styles.notice}>
-          <Text style={[TYPE.body14, { color: INK.muted }]}>Unable to load staking data.</Text>
-          <Touchable onPress={() => void refetch()}>
+          <Text style={[TYPE.body14, { color: INK.muted }]}>Unable to load your locks.</Text>
+          <Touchable onPress={() => void vePepper.refetch()}>
             <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>RETRY</Text>
           </Touchable>
         </View>
       ) : null}
 
-      <SheetSection label="AMOUNT" right={`MAX ${formatInteger(maxAmount)}`} />
+      {tab === 'lock' ? lockTab.body : null}
+      {tab === 'locks' ? (
+        <LocksTab vePepper={shownVePepper} onDone={() => handleDone('locks')} />
+      ) : null}
+      {tab === 'old' ? oldStakingTab.body : null}
+
+      {tab !== 'old' && vePepper.txError ? <TxError message={vePepper.txError} /> : null}
+      {tab === 'old' && staking.txError ? <TxError message={staking.txError} /> : null}
+    </ThermalSheet>
+  );
+}
+
+/** Unstake from the retired staking contract (it gives no votes), then lock */
+function useOldStakingTab({ staking, oldStaked, demo, onDone }: UseOldStakingTabOptions): {
+  body: ReactNode;
+  footer: ReactNode;
+  reset: () => void;
+} {
+  const [amount, setAmount] = useState('');
+  const amountNum = parseFloat(amount) || 0;
+  const isPending = staking.txStatus === 'pending';
+  const isValid = amountNum > 0 && (demo ? amountNum <= oldStaked : staking.canUnstake(amount));
+  const inputError = amountNum > 0 && !isValid ? 'NOT ENOUGH STAKED PEPPER' : null;
+
+  async function handleUnstake() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (demo) {
+      setAmount('');
+      onDone(null);
+      return;
+    }
+    const result = await staking.unstake(amount);
+    if (!result.success) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAmount('');
+    onDone(result.txHash ?? null);
+  }
+
+  function setPercent(percent: number) {
+    void Haptics.selectionAsync();
+    setAmount(oldStaked > 0 ? String(Math.floor((oldStaked * percent) / 100)) : '');
+  }
+
+  const body = (
+    <>
+      <View style={styles.moved}>
+        <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>STAKING HAS MOVED</Text>
+        <Text style={TYPE.body14}>
+          {`You have ${formatAmount(oldStaked)} PEPPER in the old staking contract. It no longer counts for votes: unstake it here, then lock it to get vePEPPER.`}
+        </Text>
+      </View>
+
+      <SheetSection label="UNSTAKE" right={`STAKED ${formatAmount(oldStaked)}`} />
 
       <View>
         <HardShadow />
         <View
           style={[
             styles.input,
-            { borderColor: inputError ? STATUS_COLORS.negative.stroke : amountNum > 0 ? THERMAL_COLORS.white : THERMAL_COLORS.border },
+            {
+              borderColor: inputError
+                ? STATUS_COLORS.negative.stroke
+                : amountNum > 0
+                  ? THERMAL_COLORS.white
+                  : THERMAL_COLORS.border,
+            },
           ]}
         >
           <TextInput
@@ -170,12 +178,12 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
         </View>
       </View>
 
-      <View style={[styles.row, { gap: 8 }]}>
+      <View style={styles.row}>
         {PERCENTS.map((percent) => (
           <FilterChip
             key={percent}
             label={percent === 100 ? 'MAX' : `${percent}%`}
-            isActive={maxAmount > 0 && amountNum === Math.floor((maxAmount * percent) / 100)}
+            isActive={oldStaked > 0 && amountNum === Math.floor((oldStaked * percent) / 100)}
             onPress={() => setPercent(percent)}
             style={{ flex: 1 }}
           />
@@ -183,72 +191,51 @@ export function StakeSheet({ visible, onClose, onSuccess, demo = false }: StakeS
       </View>
 
       {inputError ? <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>{inputError}</Text> : null}
-
-      {amountNum > 0 && !inputError ? (
-        <View>
-          <HardShadow />
-          <View style={styles.preview}>
-            <PreviewRow label="YOU GET" value={`${formatInteger(amountNum)} ${isStake ? 'vePEPPER' : 'PEPPER'}`} />
-            {isStake ? <PreviewRow label="WEEKLY REWARD" value="+5 REP / WEEK" color={THERMAL_COLORS.cream} /> : null}
-            <PreviewRow
-              label="IN YOUR WALLET"
-              value={isStake ? (requiresApproval ? '1 APPROVE  ·  2 STAKE' : '1 STAKE') : '1 UNSTAKE'}
-            />
-          </View>
-        </View>
-      ) : null}
-
-      {txError ? (
-        <View style={styles.notice}>
-          <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>TRANSACTION FAILED</Text>
-          <Text style={[TYPE.body14, { color: INK.muted }]}>{txError}</Text>
-        </View>
-      ) : null}
-    </ThermalSheet>
+    </>
   );
+
+  const footer = (
+    <PixelButton
+      label={isPending ? 'SIGN IN YOUR WALLET…' : 'UNSTAKE PEPPER >'}
+      variant="gold"
+      disabled={!isValid || isPending}
+      style={{ flex: 1 }}
+      onPress={() => void handleUnstake()}
+    />
+  );
+
+  return { body, footer, reset: () => setAmount('') };
 }
 
-/** Staking moved to vePEPPER: lock on Aragon, unstake old PEPPER here */
-function StakingMovedNotice() {
+/** Demo screens: sample locks, and actions that succeed without a wallet */
+function demoVePepper(vePepper: ReturnType<typeof useVePepper>): ReturnType<typeof useVePepper> {
+  const succeed = () => Promise.resolve({ success: true });
+  return {
+    ...vePepper,
+    account: createDemoVePepperAccount(),
+    activateVotes: succeed,
+    beginExit: succeed,
+    cancelExit: succeed,
+    withdraw: succeed,
+  };
+}
+
+function TxError({ message }: { message: string }) {
   return (
-    <View style={styles.moved}>
-      <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>STAKING HAS MOVED</Text>
-      <Text style={TYPE.body14}>
-        Voting power now comes from locking PEPPER as vePEPPER on Aragon. The old staking contract no longer counts
-        for votes, so unstake your PEPPER here and lock it there.
-      </Text>
-      <PixelButton
-        label="LOCK ON ARAGON >"
-        variant="outlineGold"
-        onPress={() => void Linking.openURL(ARAGON_DAO_URL)}
-      />
+    <View style={styles.notice}>
+      <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>TRANSACTION FAILED</Text>
+      <Text style={[TYPE.body14, { color: INK.muted }]}>{message}</Text>
     </View>
   );
 }
 
-/** Balance box; the one the current mode spends from gets a white stroke */
-function Balance({ label, value, highlight }: { label: string; value: string; highlight: boolean }) {
-  return (
-    <View style={{ flex: 1 }}>
-      <HardShadow />
-      <View style={[styles.balance, { borderColor: highlight ? THERMAL_COLORS.white : THERMAL_COLORS.border }]}>
-        <Text style={[TYPE.label12, { color: INK.muted }]}>{label}</Text>
-        <Text style={TYPE.display24}>{value}</Text>
-      </View>
-    </View>
-  );
-}
+type Tab = 'lock' | 'locks' | 'old';
 
-function PreviewRow({ label, value, color = THERMAL_COLORS.white }: { label: string; value: string; color?: string }) {
-  return (
-    <View style={styles.between}>
-      <Text style={[TYPE.label12, { color: INK.muted }]}>{label}</Text>
-      <Text style={[TYPE.meta18, { color }]}>{value}</Text>
-    </View>
-  );
-}
-
-type Operation = 'stake' | 'unstake';
+const TITLES: Record<Tab, string> = {
+  lock: 'LOCK PEPPER',
+  locks: 'YOUR LOCKS',
+  old: 'OLD STAKING',
+};
 
 const PERCENTS = [25, 50, 75, 100];
 
@@ -258,17 +245,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  between: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  balance: {
-    gap: 4,
-    padding: 12,
-    backgroundColor: THERMAL_COLORS.void,
-    borderWidth: SIZE.stroke,
-  },
   input: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -277,13 +253,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: THERMAL_COLORS.void,
     borderWidth: SIZE.stroke,
-  },
-  preview: {
-    gap: 8,
-    padding: 12,
-    backgroundColor: THERMAL_COLORS.void,
-    borderWidth: SIZE.stroke,
-    borderColor: THERMAL_COLORS.border,
   },
   inputText: {
     flex: 1,
@@ -303,3 +272,18 @@ const styles = StyleSheet.create({
     borderColor: STATUS_COLORS.negative.stroke,
   },
 });
+
+interface StakeSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  /** Dev-only demo screens: demo wallet balance; submitting just closes */
+  demo?: boolean;
+}
+
+interface UseOldStakingTabOptions {
+  staking: ReturnType<typeof useStaking>;
+  oldStaked: number;
+  /** Dev-only demo: checks the amount against the demo stake; submitting just closes */
+  demo: boolean;
+  onDone: (txHash: string | null) => void;
+}

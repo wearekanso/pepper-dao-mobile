@@ -85,7 +85,7 @@ export function PowerScreen() {
               <StreakPanel profile={profile} />
               <NextLevelPanel profile={profile} />
               <Animated.View style={[styles.row, { gap: 12 }]}>
-                <PixelButton label="STAKE PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
+                <PixelButton label="LOCK PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
                 <PixelButton label="HOW TO EARN" variant="outline" style={{ flex: 1 }} onPress={() => setIsHowToOpen(true)} />
               </Animated.View>
               <HeatLog profile={profile} isDemo={isDemo} />

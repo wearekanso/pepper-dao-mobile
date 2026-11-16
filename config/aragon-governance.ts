@@ -50,7 +50,27 @@ export const PEPPER_DAO_GOVERNANCE_CONFIG: AragonGovernanceConfig = {
 /** vePEPPER voting escrow: holds every PEPPER locked for voting power */
 export const VEPEPPER_ESCROW_ADDRESS = '0x7770aA967Bd18d64A23c86DFB01efFCE67919C1C';
 
-/** The DAO on Aragon, where PEPPER is locked as vePEPPER until the in-app flow ships */
+/**
+ * vePEPPER contracts (Aragon ve-governance v1.2, UUPS proxies, verified on routescan).
+ * Locking, exiting and delegating all go through these; see config/vepepper.ts.
+ */
+export const VEPEPPER_CONTRACTS = {
+  /** Holds locked PEPPER: createLock, beginWithdrawal, cancelWithdrawalRequest, withdraw */
+  escrow: VEPEPPER_ESCROW_ADDRESS,
+  /** ERC-721 "vePEPPER": one NFT per lock */
+  lockNFT: '0xE27B8D0af7464e8e1E4ba1c8663996C458D3bf42',
+  /** Exit queue: exit fee falls from 5% to 0% over 7 days after beginWithdrawal */
+  exitQueue: '0xcBfc2F764cB77F909314f31219aeF4d6ECbFd5f8',
+  /** Voting power curve: grows linearly with lock age, capped after 52 weeks */
+  curve: '0xc0A7e07F03a6309595cA55127d60a02876D4f583',
+  /** IVotes adapter the track plugins read votes from; owners delegate here */
+  votesAdapter: PEPPER_DAO_GOVERNANCE_CONFIG.votingToken,
+} as const;
+
+/**
+ * The DAO on Aragon. The HQ and legacy designs still send users here to lock
+ * PEPPER; thermal locks in the app (designs/thermal/components/stake-sheet.tsx).
+ */
 export const ARAGON_DAO_URL = `https://app.aragon.org/dao/${PEPPER_DAO_GOVERNANCE_CONFIG.daoNetworkKey}/${PEPPER_DAO_GOVERNANCE_CONFIG.daoAddress}/dashboard`;
 
 /** Track plugin addresses, for indexing and lookups */

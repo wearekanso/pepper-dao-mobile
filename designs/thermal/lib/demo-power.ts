@@ -1,3 +1,4 @@
+import type { VePepperAccount } from '@/services/vepepper-api';
 import type { Activity, Profile } from '@/types/user';
 
 import { DEMO_VOTE_ENABLED } from './demo-vote';
@@ -22,11 +23,13 @@ export const DEMO_WRONG_CHAIN_ID = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** What the demo wallet chip and YOUR WALLET sheet show */
+/** Demo wallet's PEPPER still in the retired staking contract, for the OLD STAKING tab */
+export const DEMO_OLD_STAKED = 20_000_000_000;
+
 export const DEMO_WALLET = {
   address: '0xcA93b4E1F2c3d4e5F6a7B8c9D0e1F2a3B4c5F310',
   walletName: 'Socios.com',
-  pepper: 12_400_000,
-  vePepper: 12_000,
+  pepper: 12_400_000_000,
   chz: 230.5,
 };
 const DEMO_PROFILE_ID = 'demo-heat';
@@ -76,4 +79,27 @@ export function createDemoActivities(): Array<Activity> {
     total -= points;
     return activity;
   });
+}
+
+/** Demo wallet's vePEPPER: two locks and one exit three days in, for the MY LOCKS tab */
+export function createDemoVePepperAccount(): VePepperAccount {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const pepper = (value: number) => BigInt(value) * BigInt(10) ** BigInt(18);
+  return {
+    walletBalance: pepper(DEMO_WALLET.pepper),
+    allowance: BigInt(0),
+    minDeposit: pepper(8_888_888_888),
+    delegatee: DEMO_WALLET.address.toLowerCase(),
+    votes: pepper(34_000_000_000),
+    locks: [
+      { tokenId: BigInt(7), amount: pepper(10_000_000_000), start: nowSeconds - 120 * 86_400, votingPower: pepper(16_600_000_000), needsExitApproval: true },
+      { tokenId: BigInt(12), amount: pepper(15_000_000_000), start: nowSeconds - 30 * 86_400, votingPower: pepper(17_400_000_000), needsExitApproval: true },
+    ],
+    exits: [
+      { tokenId: BigInt(3), amount: pepper(9_000_000_000), queuedAt: nowSeconds - 3 * 86_400, cooldown: 7 * 86_400, currentFee: pepper(257_142_857), canWithdraw: true },
+    ],
+    exitFeeBasisPoints: 500,
+    exitCooldown: 7 * 86_400,
+    maxLockAge: 364 * 86_400,
+  };
 }
