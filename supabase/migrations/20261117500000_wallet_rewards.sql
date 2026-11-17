@@ -33,7 +33,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.wallet_rewards TO service_role;
 INSERT INTO public.wallet_rewards (address, profile_id, rewarded_at)
 SELECT lower(a.metadata->>'wallet_address'), a.profile_id, min(a.created_at)
 FROM public.activities a
-WHERE a.event_type = 'WALLET_CONNECTED' AND a.metadata->>'wallet_address' IS NOT NULL
+WHERE a.event_type = 'WALLET_CONNECTED' AND a.metadata ? 'wallet_address'
 GROUP BY 1, 2
 ON CONFLICT (address) DO NOTHING;
 

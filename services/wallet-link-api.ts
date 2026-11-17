@@ -5,6 +5,10 @@
  * Edge Function. Clients cannot write profiles or reputation themselves; the
  * function checks a wallet signature, then links the wallet, awards
  * WALLET_CONNECTED and updates the rank on the server.
+ *
+ * The server decides when a signature is needed, from its own copy of the
+ * profile. The app never guesses that from its cached profile, which can be
+ * stale (for example when the same wallet was linked on another device).
  */
 
 import { BrowserProvider } from 'ethers';
@@ -15,31 +19,28 @@ import type { Profile } from '@/types/user';
 /**
  * Link `address` to the signed-in user's profile.
  *
- * When the profile already has this address and it was verified by a
- * signature (wallet_verified_at), no signature is needed and the function
- * only recalculates the rank; this must match the server. Otherwise the
- * function issues the
- * message (with server time, so the phone's clock doesn't matter) and the
- * wallet signs it (no transaction, no gas).
+ * Sends the address first. When the server answers `signatureRequired`, the
+ * wallet signs the message the server issued (no transaction, no gas) and the
+ * signed request links it, but only if `allowSignature` is true. Otherwise
+ * the result says a signature is still needed and no prompt is shown.
  */
-export async function linkWallet(params: LinkWalletParams): Promise<Profile> {
-  const { profile, address, walletProvider } = params;
+export async function linkWallet(params: LinkWalletParams): Promise<LinkWalletResult> {
+  const { address, walletProvider, allowSignature } = params;
 
-  const verifiedAndLinked =
-    !!profile.wallet_verified_at && profile.wallet_address?.toLowerCase() === address.toLowerCase();
-
-  let proof: { message: string; signature: string } | Record<string, never> = {};
-  if (!verifiedAndLinked) {
-    if (!walletProvider) throw new Error('Wallet is not ready to sign');
-
-    const { message } = await invokeLinkWallet<{ message: string }>({ address, challenge: true });
-    const signer = await new BrowserProvider(walletProvider).getSigner(address);
-    const signature = await signer.signMessage(message);
-    proof = { message, signature };
+  const first = await invokeLinkWallet({ address });
+  if (!first.signatureRequired) {
+    return { profile: first.profile, status: 'linked' };
   }
 
-  const { profile: linked } = await invokeLinkWallet<{ profile: Profile }>({ address, ...proof });
-  return linked;
+  if (!allowSignature || !walletProvider || !first.message) {
+    return { profile: first.profile, status: 'signature-required' };
+  }
+
+  const signer = await new BrowserProvider(walletProvider).getSigner(address);
+  const signature = await signer.signMessage(first.message);
+
+  const signed = await invokeLinkWallet({ address, message: first.message, signature });
+  return { profile: signed.profile, status: signed.signatureRequired ? 'signature-required' : 'linked' };
 }
 
 /**
@@ -61,9 +62,9 @@ export function isUserRejection(error: unknown): boolean {
   return messages.some((m) => /user (rejected|denied|cancel)|rejected by user|request rejected|cancelled by user/i.test(m));
 }
 
-async function invokeLinkWallet<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke<T>('link-wallet', { body });
-  if (error || !data) {
+async function invokeLinkWallet(body: Record<string, unknown>): Promise<LinkWalletResponse> {
+  const { data, error } = await supabase.functions.invoke<LinkWalletResponse>('link-wallet', { body });
+  if (error || !data?.profile) {
     throw new Error((await readFunctionError(error)) ?? 'Could not link wallet');
   }
   return data;
@@ -86,9 +87,22 @@ export interface Eip1193Provider {
   request: (args: { method: string; params?: Array<unknown> }) => Promise<unknown>;
 }
 
+export interface LinkWalletResult {
+  profile: Profile;
+  /** `signature-required`: the wallet is not linked and verified yet; ask the user to sign */
+  status: 'linked' | 'signature-required';
+}
+
 interface LinkWalletParams {
-  profile: Pick<Profile, 'id' | 'wallet_address' | 'wallet_verified_at'>;
   address: string;
-  /** Needed unless the address is already linked */
+  /** Needed to sign when the server asks for a signature */
   walletProvider?: Eip1193Provider | null;
+  /** False: never open a signature prompt, just report that one is needed */
+  allowSignature: boolean;
+}
+
+interface LinkWalletResponse {
+  profile: Profile;
+  signatureRequired?: boolean;
+  message?: string;
 }

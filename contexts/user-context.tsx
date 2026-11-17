@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useReducer } from 'react';
 
 import { supabase } from '@/config/supabase';
-import { linkWallet, type Eip1193Provider } from '@/services/wallet-link-api';
+import { linkWallet, type Eip1193Provider, type LinkWalletResult } from '@/services/wallet-link-api';
 import type { Profile, UserState } from '@/types/user';
 
 /**
@@ -10,8 +10,15 @@ import type { Profile, UserState } from '@/types/user';
  */
 interface UserContextValue extends UserState {
   refreshProfile: () => Promise<void>;
-  /** Link a wallet through the link-wallet function; signs when the address is new */
-  updateWalletAddress: (address: string, walletProvider?: Eip1193Provider | null) => Promise<void>;
+  /**
+   * Link a wallet through the link-wallet function. The server says when a
+   * signature is needed; the wallet is only asked when `allowSignature` is true.
+   */
+  updateWalletAddress: (
+    address: string,
+    walletProvider: Eip1193Provider | null | undefined,
+    options: { allowSignature: boolean },
+  ) => Promise<LinkWalletResult['status'] | null>;
   signOut: () => Promise<void>;
 }
 
@@ -207,17 +214,26 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
    * reputation themselves.
    */
   const updateWalletAddress = useCallback(
-    async (address: string, walletProvider?: Eip1193Provider | null) => {
-      if (!state.profile) return;
+    async (
+      address: string,
+      walletProvider: Eip1193Provider | null | undefined,
+      options: { allowSignature: boolean },
+    ) => {
+      if (!state.profile) return null;
 
       try {
-        const profile = await linkWallet({ profile: state.profile, address, walletProvider });
+        const { profile, status } = await linkWallet({
+          address,
+          walletProvider,
+          allowSignature: options.allowSignature,
+        });
         dispatch({ type: 'SET_PROFILE', payload: profile });
         // Linking can add activities and move streaks from an older profile
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['activities'] }),
           queryClient.invalidateQueries({ queryKey: ['streaks'] }),
         ]);
+        return status;
       } catch (error) {
         console.error('[UserContext] Error linking wallet:', error);
         throw error;

@@ -15,6 +15,8 @@ export const STORAGE_KEYS = {
   WALLET_SESSION: 'wallet:session',
   WALLET_PROVIDER_TYPE: 'wallet:provider_type',
   WALLET_CONNECTED_AT: 'wallet:connected_at',
+  /** Prefix; + lowercase address. The user declined the wallet-link signature for that wallet */
+  WALLET_LINK_DECLINED_PREFIX: 'wallet:link_declined:',
   USER_PREFERENCES: 'user:preferences',
   ONBOARDING_COMPLETED: 'onboarding:completed',
   ONBOARDING_DISMISSED: 'onboarding:dismissed',
