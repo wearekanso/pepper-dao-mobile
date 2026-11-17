@@ -21,6 +21,9 @@ port = 54323
 [auth]
 enabled = true
 site_url = "exp://localhost:8081"
+# The app signs every user in anonymously (contexts/user-context.tsx). Keep
+# this on, or `supabase config push` turns it off on the remote project.
+enable_anonymous_sign_ins = true
 
 [functions]
 # Edge Functions configuration

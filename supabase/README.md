@@ -4,9 +4,9 @@ This directory contains the Supabase configuration, migrations, and Edge Functio
 
 ## Project Info
 
-- **Project ID**: `dwzuolcegznclqfyijic`
-- **Project URL**: `https://dwzuolcegznclqfyijic.supabase.co`
-- **Region**: (check Supabase Dashboard)
+- **Project ID**: `ggehypjsdpouiklchate`
+- **Project URL**: `https://ggehypjsdpouiklchate.supabase.co`
+- **Region**: Oceania (Sydney), `ap-southeast-2`
 
 ## Directory Structure
 
@@ -123,7 +123,7 @@ supabase login
 ### Link to Project
 
 ```bash
-supabase link --project-ref dwzuolcegznclqfyijic
+supabase link --project-ref ggehypjsdpouiklchate
 ```
 
 ### Run Migrations
@@ -133,7 +133,7 @@ supabase link --project-ref dwzuolcegznclqfyijic
 supabase db push
 
 # Generate types
-supabase gen types typescript --project-id dwzuolcegznclqfyijic > types/supabase.ts
+supabase gen types typescript --project-id ggehypjsdpouiklchate > types/supabase.ts
 ```
 
 ### Deploy Functions
@@ -161,29 +161,25 @@ The Edge Functions use these environment variables (auto-injected by Supabase):
 For the mobile app, add to `.env`:
 
 ```env
-EXPO_PUBLIC_SUPABASE_URL=https://dwzuolcegznclqfyijic.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
+EXPO_PUBLIC_SUPABASE_URL=https://ggehypjsdpouiklchate.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ```
 
-## Cron Job (Optional)
+## Cron Job
 
-To automatically sync proposals every 5 minutes, set up pg_cron:
+`sync-proposals` runs every 2 minutes through pg_cron + pg_net. The job is
+created by `migrations/20261117000000_schedule_sync_proposals.sql`, so
+`supabase db push` sets it up; there is nothing to do by hand.
 
 ```sql
--- Enable pg_cron extension (via Supabase Dashboard > Database > Extensions)
-
--- Create cron job
-SELECT cron.schedule(
-  'sync-proposals-job',
-  '*/5 * * * *', -- Every 5 minutes
-  $$
-  SELECT net.http_post(
-    url := 'https://dwzuolcegznclqfyijic.supabase.co/functions/v1/sync-proposals',
-    headers := '{"Content-Type": "application/json"}'::jsonb
-  );
-  $$
-);
+-- Check the job and its recent runs
+SELECT jobname, schedule, active FROM cron.job;
+SELECT status, start_time, return_message
+FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 ```
+
+A local `supabase start` applies the same migration and calls the production
+function. Stop it locally with `SELECT cron.unschedule('sync-proposals');`.
 
 ## Ankr RPC Limits
 

@@ -5,8 +5,13 @@
 -- runs closer than 60s apart, so every 2 minutes stays clear of its rate limit.
 -- Each run scans up to 100k blocks, so a fresh project catches up on its own.
 --
--- The URL points at the production project (ggehypjsdpouiklchate). Change it
--- if this migration is applied to another project.
+-- WARNING: the URL points at the PRODUCTION project (ggehypjsdpouiklchate).
+-- A local `supabase start` / `supabase db reset` also applies this, and the
+-- local database then calls the production function every 2 minutes. That is
+-- harmless (the function is rate limited and idempotent), but you can stop it
+-- locally with:
+--   SELECT cron.unschedule('sync-proposals');
+-- Change the URL if this migration is applied to another remote project.
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
