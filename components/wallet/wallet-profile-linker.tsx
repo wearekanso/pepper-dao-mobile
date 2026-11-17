@@ -10,9 +10,11 @@ import { isUserRejection } from '@/services/wallet-link-api';
  * Wallet Profile Linker
  *
  * Automatically links wallet address to user profile when connected.
- * A new address is linked through the link-wallet function, which asks the
- * wallet for a signature (no transaction) to prove ownership.
- * Also handles rank recalculation for profiles that already have a wallet.
+ * A new address, or the profile's own address when it was never proven
+ * (wallet_verified_at is null, e.g. linked before signatures existed), is
+ * linked through the link-wallet function, which asks the wallet for a
+ * signature (no transaction) to prove ownership.
+ * Also handles rank recalculation for profiles with a verified wallet.
  *
  * Retries: a declined signature is not asked again until the wallet
  * reconnects. Other failures (network, RPC) are retried a few times with a
@@ -25,14 +27,17 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
   const { provider: walletProvider } = useProvider();
   const previousAddressRef = useRef<string | undefined>(undefined);
   const hasRecalculatedRankRef = useRef(false);
-  const failedAttemptsRef = useRef(0);
+  // Failed attempts per address, so a late failure for an old address can't
+  // use up the retries of the current one
+  const failedAttemptsRef = useRef(new Map<string, number>());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestAddressRef = useRef(address);
   const [retryTick, setRetryTick] = useState(0);
 
   // A retry belongs to one address; drop it when the connected address changes
   useEffect(() => {
+    latestAddressRef.current = address;
     clearRetryTimer(retryTimerRef);
-    failedAttemptsRef.current = 0;
   }, [address]);
 
   useEffect(() => {
@@ -42,7 +47,7 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
         if (!isConnected) {
           previousAddressRef.current = undefined;
           hasRecalculatedRankRef.current = false;
-          failedAttemptsRef.current = 0;
+          failedAttemptsRef.current.clear();
           clearRetryTimer(retryTimerRef);
         }
         return;
@@ -52,22 +57,25 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
       const linkedAddress = profile.wallet_address?.toLowerCase();
       const connectedAddress = address.toLowerCase();
 
-      // Case 1: New wallet address - link it (once per address, so the
-      // signature prompt is not shown again in a loop)
-      const isNewAddress = linkedAddress !== connectedAddress && previousAddressRef.current !== address;
+      // Must match the server: only a verified wallet skips the signature
+      const isVerifiedLink = linkedAddress === connectedAddress && !!profile.wallet_verified_at;
 
-      // Case 2: Wallet already linked but rank is OBSERVER (needs recalculation)
+      // Case 1: a different wallet, or this wallet but never proven - signed
+      // link (once per address, so the prompt is not shown again in a loop)
+      const needsSignedLink = !isVerifiedLink && previousAddressRef.current !== address;
+
+      // Case 2: verified wallet but rank is OBSERVER (needs recalculation)
       // This handles profiles created before rank promotion was implemented
       const needsRankRecalculation =
-        linkedAddress === connectedAddress &&
+        isVerifiedLink &&
         profile.rank === 'OBSERVER' &&
         !hasRecalculatedRankRef.current;
 
       // Signing needs the wallet provider; wait for it
-      if (isNewAddress && !walletProvider) return;
+      if (needsSignedLink && !walletProvider) return;
 
-      if (isNewAddress || needsRankRecalculation) {
-        const reason = isNewAddress ? 'new address' : 'rank recalculation';
+      if (needsSignedLink || needsRankRecalculation) {
+        const reason = needsSignedLink ? 'signed link' : 'rank recalculation';
         console.log(`[WalletProfileLinker] Updating wallet (${reason}):`, address);
 
         previousAddressRef.current = address;
@@ -75,9 +83,10 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
           hasRecalculatedRankRef.current = true;
         }
 
+        const attemptAddress = address;
         try {
-          await updateWalletAddress(address, walletProvider);
-          failedAttemptsRef.current = 0;
+          await updateWalletAddress(attemptAddress, walletProvider);
+          failedAttemptsRef.current.delete(attemptAddress);
           console.log('[WalletProfileLinker] Wallet updated successfully');
         } catch (error) {
           console.error('[WalletProfileLinker] Failed to update wallet:', error);
@@ -85,8 +94,12 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
           // The user said no; don't ask again until they reconnect
           if (isUserRejection(error)) return;
 
-          failedAttemptsRef.current += 1;
-          if (failedAttemptsRef.current > MAX_RETRIES) {
+          // A failure for an address that is no longer connected: nothing to retry
+          if (latestAddressRef.current !== attemptAddress) return;
+
+          const failures = (failedAttemptsRef.current.get(attemptAddress) ?? 0) + 1;
+          failedAttemptsRef.current.set(attemptAddress, failures);
+          if (failures > MAX_RETRIES) {
             Alert.alert(
               'Wallet not linked',
               'We could not link your wallet to your profile. Reconnect your wallet to try again.',
@@ -96,15 +109,14 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
 
           // Allow another attempt after a growing delay
           clearRetryTimer(retryTimerRef);
-          const retryAddress = address;
           retryTimerRef.current = setTimeout(() => {
             retryTimerRef.current = null;
             // Only retry for the address that failed
-            if (previousAddressRef.current !== retryAddress) return;
+            if (previousAddressRef.current !== attemptAddress) return;
             previousAddressRef.current = undefined;
             hasRecalculatedRankRef.current = false;
             setRetryTick((tick) => tick + 1);
-          }, RETRY_DELAY_MS * failedAttemptsRef.current);
+          }, RETRY_DELAY_MS * failures);
         }
       }
     }

@@ -44,14 +44,14 @@ interface NotificationPayload {
  * Send push notifications via Expo Push API
  * Batches notifications in groups of 100 as recommended by Expo
  */
-async function sendExpoPushNotifications(messages: ExpoPushMessage[]): Promise<void> {
+async function sendExpoPushNotifications(messages: Array<ExpoPushMessage>): Promise<void> {
   if (messages.length === 0) {
     console.log('No messages to send');
     return;
   }
 
   const BATCH_SIZE = 100;
-  const batches: ExpoPushMessage[][] = [];
+  const batches: Array<Array<ExpoPushMessage>> = [];
 
   for (let i = 0; i < messages.length; i += BATCH_SIZE) {
     batches.push(messages.slice(i, i + BATCH_SIZE));
@@ -98,10 +98,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return preflight();
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return json({ error: 'Method not allowed' }, 405);
   }
 
   // Only the server (sync-proposals) may send pushes. Every app user has a
@@ -198,7 +195,7 @@ Deno.serve(async (req: Request) => {
         .filter((token): token is string => !!token && token.startsWith('ExponentPushToken')),
     )];
 
-    const messages: ExpoPushMessage[] = uniqueTokens
+    const messages: Array<ExpoPushMessage> = uniqueTokens
       .map((token) => ({
         to: token,
         title: notificationTitle,

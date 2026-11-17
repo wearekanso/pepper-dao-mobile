@@ -15,18 +15,21 @@ import type { Profile } from '@/types/user';
 /**
  * Link `address` to the signed-in user's profile.
  *
- * When the profile already has this address, no signature is needed and the
- * function only recalculates the rank. Otherwise the function issues the
+ * When the profile already has this address and it was verified by a
+ * signature (wallet_verified_at), no signature is needed and the function
+ * only recalculates the rank; this must match the server. Otherwise the
+ * function issues the
  * message (with server time, so the phone's clock doesn't matter) and the
  * wallet signs it (no transaction, no gas).
  */
 export async function linkWallet(params: LinkWalletParams): Promise<Profile> {
   const { profile, address, walletProvider } = params;
 
-  const alreadyLinked = profile.wallet_address?.toLowerCase() === address.toLowerCase();
+  const verifiedAndLinked =
+    !!profile.wallet_verified_at && profile.wallet_address?.toLowerCase() === address.toLowerCase();
 
   let proof: { message: string; signature: string } | Record<string, never> = {};
-  if (!alreadyLinked) {
+  if (!verifiedAndLinked) {
     if (!walletProvider) throw new Error('Wallet is not ready to sign');
 
     const { message } = await invokeLinkWallet<{ message: string }>({ address, challenge: true });
@@ -84,7 +87,7 @@ export interface Eip1193Provider {
 }
 
 interface LinkWalletParams {
-  profile: Pick<Profile, 'id' | 'wallet_address'>;
+  profile: Pick<Profile, 'id' | 'wallet_address' | 'wallet_verified_at'>;
   address: string;
   /** Needed unless the address is already linked */
   walletProvider?: Eip1193Provider | null;
