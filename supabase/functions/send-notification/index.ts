@@ -8,6 +8,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
  * Called by sync-proposals when new proposals are indexed.
  *
  * Deployment: supabase functions deploy send-notification
+ * (verify_jwt = false in config.toml; only requests with the service role key
+ * are accepted, checked in isServiceRequest)
  *
  * Usage:
  * POST /functions/v1/send-notification
@@ -103,6 +105,15 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Only the server (sync-proposals) may send pushes. Every app user has a
+  // valid JWT through anonymous sign-in, so a JWT alone is not enough.
+  if (!isServiceRequest(req)) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -246,3 +257,22 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+
+/**
+ * True when the request carries this project's service role key, which only
+ * server code (sync-proposals) has.
+ */
+function isServiceRequest(req: Request): boolean {
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+  return !!serviceKey && !!token && timingSafeEqual(token, serviceKey);
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}

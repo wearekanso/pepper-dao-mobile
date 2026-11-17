@@ -35,3 +35,13 @@ enable_anonymous_sign_ins = true
 [functions.sync-proposals]
 verify_jwt = false
 
+# Checks the service role key itself (isServiceRequest), so the gateway JWT
+# check is not needed and would only get in the way of new-style keys.
+[functions.send-notification]
+verify_jwt = false
+
+# Checks the caller's JWT itself with auth.getUser, which works with both
+# legacy and new Supabase signing keys.
+[functions.link-wallet]
+verify_jwt = false
+

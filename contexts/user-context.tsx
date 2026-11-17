@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useReducer } from 'react';
 
 import { supabase } from '@/config/supabase';
-import { recordActivity } from '@/services/activity-service';
+import { linkWallet } from '@/services/wallet-link-api';
 import type { Profile, UserState } from '@/types/user';
 
 /**
@@ -9,7 +9,8 @@ import type { Profile, UserState } from '@/types/user';
  */
 interface UserContextValue extends UserState {
   refreshProfile: () => Promise<void>;
-  updateWalletAddress: (address: string) => Promise<void>;
+  /** Link a wallet through the link-wallet function; signs when the address is new */
+  updateWalletAddress: (address: string, walletProvider?: WalletProvider | null) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -199,36 +200,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [state.profile?.id]);
 
   /**
-   * Update wallet address on profile and handle rank promotion
+   * Link a wallet to the profile. The server checks the wallet signature,
+   * awards WALLET_CONNECTED and updates the rank; clients cannot write
+   * reputation themselves.
    */
-  const updateWalletAddress = useCallback(async (address: string) => {
-    if (!state.profile?.id) return;
+  const updateWalletAddress = useCallback(
+    async (address: string, walletProvider?: WalletProvider | null) => {
+      if (!state.profile) return;
 
-    try {
-      // Update wallet address
-      const { error } = await supabase
-        .from('profiles')
-        .update({ wallet_address: address })
-        .eq('id', state.profile.id);
-
-      if (error) {
+      try {
+        const profile = await linkWallet({ profile: state.profile, address, walletProvider });
+        dispatch({ type: 'SET_PROFILE', payload: profile });
+      } catch (error) {
+        console.error('[UserContext] Error linking wallet:', error);
         throw error;
       }
-
-      // Record WALLET_CONNECTED activity (awards points and handles rank promotion)
-      await recordActivity({
-        profileId: state.profile.id,
-        eventType: 'WALLET_CONNECTED',
-        metadata: { wallet_address: address },
-      });
-
-      // Refresh profile to get updated data
-      await refreshProfile();
-    } catch (error) {
-      console.error('[UserContext] Error updating wallet address:', error);
-      throw error;
-    }
-  }, [state.profile?.id, refreshProfile]);
+    },
+    [state.profile],
+  );
 
   /**
    * Sign out user
@@ -265,4 +254,9 @@ export function useUser(): UserContextValue {
     throw new Error('useUser must be used within a UserProvider');
   }
   return context;
+}
+
+/** EIP-1193 provider from Reown AppKit */
+interface WalletProvider {
+  request: (args: { method: string; params?: Array<unknown> }) => Promise<unknown>;
 }

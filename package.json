@@ -12,6 +12,7 @@
     "supabase:deploy": "supabase functions deploy",
     "supabase:deploy:sync": "supabase functions deploy sync-proposals --no-verify-jwt",
     "supabase:deploy:notify": "supabase functions deploy send-notification",
+    "supabase:deploy:link": "supabase functions deploy link-wallet",
     "supabase:logs:sync": "supabase functions logs sync-proposals",
     "supabase:logs:notify": "supabase functions logs send-notification",
     "supabase:types": "supabase gen types typescript --project-id ggehypjsdpouiklchate > types/supabase.generated.ts"

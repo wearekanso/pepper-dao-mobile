@@ -99,20 +99,15 @@
 //     const platform = Platform.OS as 'ios' | 'android' | 'web';
 //     const deviceName = Device.deviceName || undefined;
 
-//     // Upsert the token (insert or update if exists)
-//     const { error } = await supabase.from('device_tokens').upsert(
-//       {
-//         expo_push_token: token,
-//         wallet_address: walletAddress?.toLowerCase(),
-//         platform,
-//         device_name: deviceName,
-//         is_active: true,
-//         last_used_at: new Date().toISOString(),
-//       },
-//       {
-//         onConflict: 'expo_push_token',
-//       },
-//     );
+//     // Register through the RPC, not a table upsert: RLS only lets a user
+//     // change their own rows, and after a reinstall the token row belongs to
+//     // the previous anonymous user. The RPC hands it to the current user.
+//     const { error } = await supabase.rpc('register_device_token', {
+//       p_expo_push_token: token,
+//       p_platform: platform,
+//       p_device_name: deviceName ?? null,
+//       p_wallet_address: walletAddress ?? null,
+//     });
 
 //     if (error) {
 //       console.error('[Push] Failed to register token:', error);

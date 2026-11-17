@@ -11,11 +11,18 @@ import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38
  *
  * DAO: 0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213 (chiliz-mainnet)
  *
- * Deployment: supabase functions deploy sync-proposals --no-verify-jwt
+ * Deployment: supabase functions deploy sync-proposals
+ * (verify_jwt = false in config.toml: the cron request carries no JWT)
+ *
+ * Only callers with the shared secret run it: the `x-sync-secret` header must
+ * match the SYNC_PROPOSALS_SECRET function secret (the cron job reads the same
+ * value from the Vault secret `sync_proposals_secret`), or the request must
+ * carry the service role key.
  *
  * Usage:
- * - Manual: curl -X POST https://<project>.supabase.co/functions/v1/sync-proposals
- * - Cron: Set up via Supabase Dashboard > Database > Extensions > pg_cron
+ * - Cron: every 2 minutes, see migration 20261117300000
+ * - Manual: curl -X POST https://<project>.supabase.co/functions/v1/sync-proposals \
+ *     -H "Authorization: Bearer <service role key>"
  *
  * Ankr Public Tier Limits (https://www.ankr.com/docs/rpc-service/service-plans/):
  * - Max block range: 1,000 blocks
@@ -286,6 +293,13 @@ Deno.serve(async (req: Request) => {
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
+    });
+  }
+
+  if (!isAuthorizedSyncRequest(req)) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 
@@ -1087,4 +1101,28 @@ function htmlToText(html: string): string {
  */
 function sanitizeForPostgres(str: string): string {
   return str.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
+
+/**
+ * The cron job sends SYNC_PROPOSALS_SECRET in `x-sync-secret`; manual runs
+ * use the service role key. Anything else is refused, so the indexer can't
+ * be driven from outside.
+ */
+function isAuthorizedSyncRequest(req: Request): boolean {
+  const syncSecret = Deno.env.get('SYNC_PROPOSALS_SECRET');
+  const headerSecret = req.headers.get('x-sync-secret');
+  if (syncSecret && headerSecret && timingSafeEqual(headerSecret, syncSecret)) return true;
+
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+  return !!serviceKey && !!token && timingSafeEqual(token, serviceKey);
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
 }

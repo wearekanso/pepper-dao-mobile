@@ -73,14 +73,18 @@ export interface Database {
           created_at: string;
           updated_at: string;
           last_used_at: string | null;
+          /** Owner (auth user); RLS limits clients to their own rows */
+          user_id: string | null;
         };
         Insert: Omit<
           Database['public']['Tables']['device_tokens']['Row'],
-          'id' | 'created_at' | 'updated_at'
+          'id' | 'created_at' | 'updated_at' | 'user_id'
         > & {
           id?: string;
           created_at?: string;
           updated_at?: string;
+          /** Defaults to auth.uid() */
+          user_id?: string | null;
         };
         Update: Partial<Database['public']['Tables']['device_tokens']['Insert']>;
       };
@@ -231,7 +235,18 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['streaks']['Insert']>;
       };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      /** Registers this device's push token for the signed-in user (takes over the row after a reinstall) */
+      register_device_token: {
+        Args: {
+          p_expo_push_token: string;
+          p_platform: 'ios' | 'android' | 'web';
+          p_device_name?: string | null;
+          p_wallet_address?: string | null;
+        };
+        Returns: undefined;
+      };
+    };
     Enums: Record<string, never>;
   };
 }

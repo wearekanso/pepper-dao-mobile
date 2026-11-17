@@ -23,6 +23,7 @@ npm run lint         # Run ESLint
 npm run supabase:deploy              # Deploy all Edge Functions
 npm run supabase:deploy:sync         # Deploy sync-proposals (--no-verify-jwt)
 npm run supabase:deploy:notify       # Deploy send-notification
+npm run supabase:deploy:link         # Deploy link-wallet
 npm run supabase:logs:sync           # View sync-proposals logs
 npm run supabase:logs:notify         # View send-notification logs
 npm run supabase:types               # Generate types to types/supabase.generated.ts (types/supabase.ts is hand-written)
@@ -61,7 +62,8 @@ SafeAreaProvider > AppKitProvider > QueryClientProvider > UserProvider > Onboard
 
 ### Supabase Backend
 - **Tables**: `proposals`, `device_tokens`, `sync_state`, `notification_history`, `profiles`, `activities`, `streaks`, `votes`
-- **Edge Functions**: `sync-proposals` (blockchain indexer), `send-notification` (Expo push)
+- **Edge Functions**: `sync-proposals` (blockchain indexer), `send-notification` (Expo push), `link-wallet` (signed wallet link + reputation)
+- **Writes**: clients only read reputation tables; `profiles`/`activities`/`streaks`/`votes` are written by Edge Functions. Never write reputation from the app; add server logic instead (see `supabase/README.md`, "Who can write what")
 - `types/supabase.ts` is hand-written; `npm run supabase:types` writes generated types to `types/supabase.generated.ts` for comparison
 
 ## Coding Conventions
