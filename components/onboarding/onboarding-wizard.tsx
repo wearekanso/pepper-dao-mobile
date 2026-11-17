@@ -32,7 +32,7 @@ const SLIDES: SlideData[] = [
   {
     title: 'Claim Your Power',
     emoji: '🏆',
-    description: 'Stake tokens, earn reputation, and climb 6 ranks. Build streaks to unlock rewards and influence!',
+    description: 'Vote, propose, and earn reputation to climb 6 ranks. Build streaks to unlock rewards and influence!',
     color: '#0080FF',
   },
 ];
