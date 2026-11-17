@@ -3,7 +3,7 @@
  *
  * Links the connected wallet to the user's profile through the link-wallet
  * Edge Function. Clients cannot write profiles or reputation themselves; the
- * function checks a wallet signature, then sets wallet_address, awards
+ * function checks a wallet signature, then links the wallet, awards
  * WALLET_CONNECTED and updates the rank on the server.
  */
 
@@ -16,8 +16,9 @@ import type { Profile } from '@/types/user';
  * Link `address` to the signed-in user's profile.
  *
  * When the profile already has this address, no signature is needed and the
- * function only recalculates the rank. Otherwise the wallet is asked to sign
- * a short message (no transaction, no gas).
+ * function only recalculates the rank. Otherwise the function issues the
+ * message (with server time, so the phone's clock doesn't matter) and the
+ * wallet signs it (no transaction, no gas).
  */
 export async function linkWallet(params: LinkWalletParams): Promise<Profile> {
   const { profile, address, walletProvider } = params;
@@ -28,37 +29,31 @@ export async function linkWallet(params: LinkWalletParams): Promise<Profile> {
   if (!alreadyLinked) {
     if (!walletProvider) throw new Error('Wallet is not ready to sign');
 
-    const message = buildLinkMessage(profile.id, address, new Date());
+    const { message } = await invokeLinkWallet<{ message: string }>({ address, challenge: true });
     const signer = await new BrowserProvider(walletProvider).getSigner(address);
     const signature = await signer.signMessage(message);
     proof = { message, signature };
   }
 
-  const { data, error } = await supabase.functions.invoke<{ profile: Profile }>('link-wallet', {
-    body: { address, ...proof },
-  });
-
-  if (error || !data?.profile) {
-    throw new Error(await readFunctionError(error) ?? 'Could not link wallet');
-  }
-
-  return data.profile;
+  const { profile: linked } = await invokeLinkWallet<{ profile: Profile }>({ address, ...proof });
+  return linked;
 }
 
 /**
- * The message the wallet signs. Must match LINK_MESSAGE_PATTERN in
- * supabase/functions/link-wallet/index.ts.
+ * True when the wallet user declined the request (EIP-1193 code 4001, or
+ * ethers' ACTION_REJECTED). Those should not be retried automatically.
  */
-export function buildLinkMessage(profileId: string, address: string, issuedAt: Date): string {
-  return [
-    'Link this wallet to your Pepper DAO profile.',
-    '',
-    'This signature only proves you own the wallet. It costs nothing and sends no transaction.',
-    '',
-    `Profile: ${profileId}`,
-    `Wallet: ${address}`,
-    `Issued at: ${issuedAt.toISOString()}`,
-  ].join('\n');
+export function isUserRejection(error: unknown): boolean {
+  const e = error as { code?: unknown; info?: { error?: { code?: unknown } } } | null;
+  return e?.code === 4001 || e?.code === 'ACTION_REJECTED' || e?.info?.error?.code === 4001;
+}
+
+async function invokeLinkWallet<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke<T>('link-wallet', { body });
+  if (error || !data) {
+    throw new Error((await readFunctionError(error)) ?? 'Could not link wallet');
+  }
+  return data;
 }
 
 /** The function's `{ error }` body, when the invoke error carries a response */
@@ -73,13 +68,14 @@ async function readFunctionError(error: unknown): Promise<string | null> {
   }
 }
 
-interface Eip1193Provider {
+/** EIP-1193 provider from Reown AppKit */
+export interface Eip1193Provider {
   request: (args: { method: string; params?: Array<unknown> }) => Promise<unknown>;
 }
 
 interface LinkWalletParams {
   profile: Pick<Profile, 'id' | 'wallet_address'>;
   address: string;
-  /** EIP-1193 provider from Reown AppKit; needed unless the address is already linked */
+  /** Needed unless the address is already linked */
   walletProvider?: Eip1193Provider | null;
 }

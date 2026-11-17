@@ -5,7 +5,7 @@ import {
   TRACK_KEY_PREFIX,
   type AragonGovernanceConfig,
 } from '@/config/aragon-governance';
-import { supabase, triggerProposalSync } from '@/config/supabase';
+import { supabase } from '@/config/supabase';
 import {
   generateTimeLabel,
   type GovernanceProposal,
@@ -305,19 +305,6 @@ export async function fetchGovernanceProposalById(
     console.error('[Governance API] Error fetching proposal:', error);
     throw new Error('Unable to load this proposal. Please try again.');
   }
-}
-
-/**
- * Trigger a manual sync of proposals from the blockchain
- * Rate limited to prevent abuse (60 seconds minimum between syncs)
- */
-export async function refreshProposals(): Promise<{
-  success: boolean;
-  message: string;
-  newProposals?: number;
-}> {
-  console.log('[Governance API] Triggering proposal sync');
-  return triggerProposalSync();
 }
 
 /**

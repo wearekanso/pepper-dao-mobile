@@ -1,6 +1,8 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+import { isServiceRequest } from '../_shared/auth.ts';
+
 /**
  * Send Notification Edge Function
  *
@@ -198,11 +200,17 @@ Deno.serve(async (req: Request) => {
         notificationBody = payload.body || payload.title;
     }
 
-    // Build messages for all devices
-    const messages: ExpoPushMessage[] = deviceTokens
-      .filter((dt) => dt.expo_push_token && dt.expo_push_token.startsWith('ExponentPushToken'))
-      .map((dt) => ({
-        to: dt.expo_push_token,
+    // One message per device. A device can have a row per (anonymous) user
+    // after a reinstall, so the same token may appear more than once.
+    const uniqueTokens = [...new Set(
+      deviceTokens
+        .map((dt) => dt.expo_push_token)
+        .filter((token): token is string => !!token && token.startsWith('ExponentPushToken')),
+    )];
+
+    const messages: ExpoPushMessage[] = uniqueTokens
+      .map((token) => ({
+        to: token,
         title: notificationTitle,
         body: notificationBody,
         sound: 'default',
@@ -256,23 +264,3 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-
-
-/**
- * True when the request carries this project's service role key, which only
- * server code (sync-proposals) has.
- */
-function isServiceRequest(req: Request): boolean {
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
-  return !!serviceKey && !!token && timingSafeEqual(token, serviceKey);
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  const ab = new TextEncoder().encode(a);
-  const bb = new TextEncoder().encode(b);
-  if (ab.length !== bb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
-  return diff === 0;
-}

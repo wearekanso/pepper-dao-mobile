@@ -1,5 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+
+import { hasSharedSecret, isServiceRequest } from '../_shared/auth.ts';
 import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38.6';
 
 /**
@@ -296,7 +298,8 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  if (!isAuthorizedSyncRequest(req)) {
+  // Cron sends the shared secret; manual runs use the service role key
+  if (!hasSharedSecret(req, 'x-sync-secret', 'SYNC_PROPOSALS_SECRET') && !isServiceRequest(req)) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
@@ -1101,28 +1104,4 @@ function htmlToText(html: string): string {
  */
 function sanitizeForPostgres(str: string): string {
   return str.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-}
-
-/**
- * The cron job sends SYNC_PROPOSALS_SECRET in `x-sync-secret`; manual runs
- * use the service role key. Anything else is refused, so the indexer can't
- * be driven from outside.
- */
-function isAuthorizedSyncRequest(req: Request): boolean {
-  const syncSecret = Deno.env.get('SYNC_PROPOSALS_SECRET');
-  const headerSecret = req.headers.get('x-sync-secret');
-  if (syncSecret && headerSecret && timingSafeEqual(headerSecret, syncSecret)) return true;
-
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
-  return !!serviceKey && !!token && timingSafeEqual(token, serviceKey);
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  const ab = new TextEncoder().encode(a);
-  const bb = new TextEncoder().encode(b);
-  if (ab.length !== bb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
-  return diff === 0;
 }

@@ -64,6 +64,8 @@ SafeAreaProvider > AppKitProvider > QueryClientProvider > UserProvider > Onboard
 - **Tables**: `proposals`, `device_tokens`, `sync_state`, `notification_history`, `profiles`, `activities`, `streaks`, `votes`
 - **Edge Functions**: `sync-proposals` (blockchain indexer), `send-notification` (Expo push), `link-wallet` (signed wallet link + reputation)
 - **Writes**: clients only read reputation tables; `profiles`/`activities`/`streaks`/`votes` are written by Edge Functions. Never write reputation from the app; add server logic instead (see `supabase/README.md`, "Who can write what")
+- **Reputation rules** (points, rank requirements) live in `supabase/functions/_shared/reputation-rules.ts`, imported by both the app (`lib/reputation.ts`) and `link-wallet`. Change them there only
+- `supabase/functions` is Deno code and is excluded from the app's `tsc`; the shared rules file must stay free of Deno/RN APIs
 - `types/supabase.ts` is hand-written; `npm run supabase:types` writes generated types to `types/supabase.generated.ts` for comparison
 
 ## Coding Conventions

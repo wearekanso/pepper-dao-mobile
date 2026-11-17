@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useReducer } from 'react';
 
 import { supabase } from '@/config/supabase';
-import { linkWallet } from '@/services/wallet-link-api';
+import { linkWallet, type Eip1193Provider } from '@/services/wallet-link-api';
 import type { Profile, UserState } from '@/types/user';
 
 /**
@@ -10,7 +10,7 @@ import type { Profile, UserState } from '@/types/user';
 interface UserContextValue extends UserState {
   refreshProfile: () => Promise<void>;
   /** Link a wallet through the link-wallet function; signs when the address is new */
-  updateWalletAddress: (address: string, walletProvider?: WalletProvider | null) => Promise<void>;
+  updateWalletAddress: (address: string, walletProvider?: Eip1193Provider | null) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -205,7 +205,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
    * reputation themselves.
    */
   const updateWalletAddress = useCallback(
-    async (address: string, walletProvider?: WalletProvider | null) => {
+    async (address: string, walletProvider?: Eip1193Provider | null) => {
       if (!state.profile) return;
 
       try {
@@ -254,9 +254,4 @@ export function useUser(): UserContextValue {
     throw new Error('useUser must be used within a UserProvider');
   }
   return context;
-}
-
-/** EIP-1193 provider from Reown AppKit */
-interface WalletProvider {
-  request: (args: { method: string; params?: Array<unknown> }) => Promise<unknown>;
 }

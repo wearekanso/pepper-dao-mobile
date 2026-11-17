@@ -21,8 +21,11 @@ supabase/
 │   │   └── index.ts
 │   ├── send-notification/   # Sends push notifications
 │   │   └── index.ts
-│   └── link-wallet/         # Links a signed wallet, awards reputation
-│       └── index.ts
+│   ├── link-wallet/         # Links a signed wallet, awards reputation
+│   │   └── index.ts
+│   └── _shared/             # Shared by the functions
+│       ├── auth.ts               # service-role / shared-secret checks
+│       └── reputation-rules.ts   # points and ranks; the app imports it too
 └── README.md
 ```
 
@@ -48,9 +51,14 @@ write is creating an empty profile (`id` only) if the auth trigger has not run.
 Wallets are linked through `link-wallet`, which checks a wallet signature, so
 nobody can set their own points or rank or claim someone else's address.
 
-Push tokens are registered with the `register_device_token()` RPC, which hands
-a token row to the current user after a reinstall. Users can read, update and
-delete only their own `device_tokens` rows. `sync_state` is server-only.
+Points and rank requirements live in `functions/_shared/reputation-rules.ts`,
+which both `lib/reputation.ts` (app) and `link-wallet` (server) import, so the
+UI never promises a rank the server doesn't give.
+
+Push tokens are registered with the `register_device_token()` RPC. There is
+one row per (token, user): a reinstall adds a row for the new anonymous user,
+and nobody can take over or delete another user's row, even knowing the token.
+`send-notification` sends once per token. `sync_state` is server-only.
 
 ### Entity Relationship
 
@@ -141,11 +149,19 @@ Links the connected wallet to the caller's profile, awards WALLET_CONNECTED
 
 **Endpoint**: `POST /functions/v1/link-wallet` with the user's JWT
 
-**Body**: `{ "address", "message", "signature" }`. The wallet signs the message
-built by `buildLinkMessage` in `services/wallet-link-api.ts` (profile id,
-address, time; valid for 10 minutes). For the address already on the profile,
-only `address` is needed and the rank is recalculated. A valid signature for an
-address held by another profile moves the address to the caller.
+**Flow** (`services/wallet-link-api.ts`):
+1. `{ "address", "challenge": true }` returns `{ "message" }`, built with the
+   server clock (profile id, address, time; valid for 10 minutes), so a phone
+   with a wrong clock can still link.
+2. The wallet signs it; `{ "address", "message", "signature" }` links.
+
+For the address already on the profile, only `address` is needed and the rank
+is recalculated. The write is the `link_wallet()` SQL function: one
+transaction with the profile rows locked, so WALLET_CONNECTED is awarded once
+even with retries or parallel calls. If another profile holds the address (the
+owner reinstalled), its reputation (points, rank, flags, activities, streaks,
+votes) moves with the wallet and the old profile is reset, so a reinstall
+can't earn the reward again. Rank changes go through `promote_rank()`.
 
 **Deploy**:
 ```bash
