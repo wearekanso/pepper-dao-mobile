@@ -9,7 +9,7 @@ import { useWallet } from '@/contexts/wallet-context';
 import { useStaking } from '@/hooks/use-staking';
 import { useVePepper } from '@/hooks/use-vepepper';
 import { useCountUp } from '@/designs/thermal/hooks/use-count-up';
-import { formatCompact, formatInteger, tokenToNumber } from '@/designs/thermal/lib/format';
+import { formatCompact, formatInteger, shortenAddress, tokenToNumber } from '@/designs/thermal/lib/format';
 
 import { Card, Notice, SectionLabel, StatRow } from '../components/atoms';
 import { ConnectCard } from '../components/connect-card';
@@ -25,7 +25,7 @@ import { HQ_COLORS, TYPE } from '../theme';
  * votes: it can only be harvested and unstaked here.
  */
 export function SeedVaultScreen() {
-  const { isConnected } = useWallet();
+  const { address, isConnected } = useWallet();
   const [isUnstakeOpen, setIsUnstakeOpen] = useState(false);
   const vePepper = useVePepper();
   const staking = useStaking();
@@ -33,7 +33,10 @@ export function SeedVaultScreen() {
   const account = vePepper.account;
   const votes = account ? tokenToNumber(account.votes, PEPPER_DECIMALS) : 0;
   const locked = account ? tokenToNumber(sumLocked(account.locks), PEPPER_DECIMALS) : 0;
-  const hasInactiveVotes = Boolean(account && account.delegatee === null && account.locks.length > 0);
+  const hasLocks = Boolean(account && account.locks.length > 0);
+  const hasInactiveVotes = hasLocks && account?.delegatee === null;
+  // Locks follow the delegatee: votes delegated to someone else show as 0 here
+  const delegatedTo = hasLocks && account?.delegatee && !isSameAddress(account.delegatee, address) ? account.delegatee : null;
   const animatedVotes = useCountUp(votes, 1100);
 
   const oldStaked = parseFloat(staking.formattedStakedBalance) || 0;
@@ -78,6 +81,9 @@ export function SeedVaultScreen() {
             <Text style={TYPE.body13}>
               {locked > 0 ? `${formatCompact(locked)} PEPPER locked as vePEPPER` : 'Nothing locked yet'}
             </Text>
+            {delegatedTo ? (
+              <Text style={[TYPE.body13, { color: HQ_COLORS.muted }]}>{`Votes delegated to ${shortenAddress(delegatedTo)}`}</Text>
+            ) : null}
           </View>
 
           {hasInactiveVotes ? (
@@ -126,6 +132,9 @@ export function SeedVaultScreen() {
       )}
 
       {vePepper.error && !account ? <Notice title="COULD NOT LOAD THE VAULT" message="Pull down to try again." /> : null}
+      {isConnected && staking.error ? (
+        <Notice title="COULD NOT LOAD THE OLD STAKING CONTRACT" message="PEPPER you have there may not show. Pull down to try again." />
+      ) : null}
 
       <Animated.View>
         <StatRow
@@ -144,6 +153,10 @@ export function SeedVaultScreen() {
       <StakeSheet visible={isUnstakeOpen} initialMode="unstake" onClose={() => setIsUnstakeOpen(false)} />
     </HqScreen>
   );
+}
+
+function isSameAddress(a: string, b: string | undefined): boolean {
+  return Boolean(b) && a.toLowerCase() === b?.toLowerCase();
 }
 
 function sumLocked(locks: Array<{ amount: bigint }>): bigint {
