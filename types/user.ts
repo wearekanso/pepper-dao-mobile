@@ -30,7 +30,6 @@ export const EVENT_TYPES = [
   'STREAK_MILESTONE',
   'STREAK_BROKEN',
   'RANK_UP',
-  'STAKING_BONUS',
   'DELEGATION_RECEIVED',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
