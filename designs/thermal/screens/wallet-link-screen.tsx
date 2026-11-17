@@ -75,7 +75,7 @@ export function WalletLinkScreen({ visible, onDismiss }: WalletLinkScreenProps) 
               <View style={styles.cardShadow} />
               <View style={styles.card}>
                 <Text style={[TYPE.display32, { color: THERMAL_COLORS.cream }]}>{`${FROM.name} → ${LEVEL.name}`}</Text>
-                <Text style={[TYPE.meta20, { color: THERMAL_COLORS.orange }]}>VOTE · STAKE · EARN REP</Text>
+                <Text style={[TYPE.meta20, { color: THERMAL_COLORS.orange }]}>VOTE · PROPOSE · EARN REP</Text>
                 <Text style={[TYPE.label10, { color: 'rgba(255,255,255,0.6)' }]}>CHILIZ CHAIN · WALLETCONNECT</Text>
               </View>
             </View>

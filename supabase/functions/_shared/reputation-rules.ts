@@ -18,7 +18,6 @@ export const REPUTATION_POINTS = {
   STREAK_MILESTONE: 0, // Varies by milestone
   STREAK_BROKEN: 0,
   RANK_UP: 0,
-  STAKING_BONUS: 5, // Per week
   DELEGATION_RECEIVED: 15,
 } as const;
 

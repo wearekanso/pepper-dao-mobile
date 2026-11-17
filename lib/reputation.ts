@@ -193,8 +193,6 @@ export function getEventTitle(activity: Activity): string {
       return 'Streak ended';
     case 'RANK_UP':
       return `Reached ${RANK_LABELS[activity.rank_after!]} rank!`;
-    case 'STAKING_BONUS':
-      return 'Staking bonus';
     case 'DELEGATION_RECEIVED':
       return 'Received delegation';
     default:
@@ -223,8 +221,6 @@ export function getEventIcon(eventType: EventType): string {
       return '💔';
     case 'RANK_UP':
       return '⭐';
-    case 'STAKING_BONUS':
-      return '💎';
     case 'DELEGATION_RECEIVED':
       return '🤝';
     default:
