@@ -306,7 +306,7 @@ function GuestPanel({ onConnect }: { onConnect: () => void }) {
   return (
     <Panel index={1}>
       <Text style={[TYPE.label12, { color: INK.muted }]}>NO HEAT SIGNATURE YET</Text>
-      <Text style={TYPE.body14}>Link a wallet to start building heat. Every vote, stake and proposal earns REP.</Text>
+      <Text style={TYPE.body14}>Link a wallet to start building heat. Every vote and proposal earns REP.</Text>
       <View style={styles.guestList}>
         {GUEST_STEPS.map((step, index) => (
           <View key={step.title}>

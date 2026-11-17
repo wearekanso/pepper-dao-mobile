@@ -296,7 +296,7 @@ const STEPS: Array<Step> = [
     badge: '6 HEAT LEVELS',
     chips: [],
     title: 'HEAT UP',
-    body: 'Stake, vote and propose to earn REP. Climb 6 heat levels, from Bell to Reaper.',
+    body: 'Vote and propose to earn REP. Climb 6 heat levels, from Bell to Reaper.',
   },
   {
     kind: 'wallet',
@@ -322,7 +322,7 @@ const LADDER: Array<{ rank: Rank; color: string; height: number; letters: number
 const MODES = [
   { title: 'PULSE', hint: 'Treasury & token, live', icon: require('@/assets/images/pepper/total-supply.png') },
   { title: 'DECIDE', hint: 'Vote on proposals', icon: require('@/assets/images/pepper/vault.png') },
-  { title: 'POWER', hint: 'Stake, earn REP, level up', icon: require('@/assets/images/pepper/burn.png') },
+  { title: 'POWER', hint: 'Earn REP, level up', icon: require('@/assets/images/pepper/burn.png') },
 ];
 
 const MASCOT_SIZE = 190;

@@ -111,7 +111,7 @@ export function SeedVaultScreen() {
       </Animated.View>
 
       <Text style={[TYPE.body13, { color: HQ_COLORS.dim }]}>
-        Staked PEPPER is your voting power in the Ministers Hall and earns +5 REP every week.
+        Staked PEPPER is your voting power in the Ministers Hall.
       </Text>
 
       <StakeSheet visible={sheetMode !== null} initialMode={sheetMode ?? 'stake'} onClose={() => setSheetMode(null)} />
