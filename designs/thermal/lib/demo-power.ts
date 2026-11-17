@@ -39,6 +39,7 @@ export function createDemoProfile(): Profile {
   return {
     id: DEMO_PROFILE_ID,
     wallet_address: '0x000000000000000000000000000000000000dEaD',
+    wallet_verified_at: null,
     reputation_points: 40,
     rank: 'MEMBER',
     current_streak_weeks: 3,

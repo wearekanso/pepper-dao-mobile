@@ -23,9 +23,10 @@ npm run lint         # Run ESLint
 npm run supabase:deploy              # Deploy all Edge Functions
 npm run supabase:deploy:sync         # Deploy sync-proposals (--no-verify-jwt)
 npm run supabase:deploy:notify       # Deploy send-notification
+npm run supabase:deploy:link         # Deploy link-wallet
 npm run supabase:logs:sync           # View sync-proposals logs
 npm run supabase:logs:notify         # View send-notification logs
-npm run supabase:types               # Generate TypeScript types from schema
+npm run supabase:types               # Generate types to types/supabase.generated.ts (types/supabase.ts is hand-written)
 ```
 
 ## Architecture
@@ -60,9 +61,12 @@ SafeAreaProvider > AppKitProvider > QueryClientProvider > UserProvider > Onboard
 - `supabase/` - Edge Functions and database migrations
 
 ### Supabase Backend
-- **Tables**: `proposals`, `device_tokens`, `sync_state`, `notification_history`, `user_profiles`, `activities`, `streaks`
-- **Edge Functions**: `sync-proposals` (blockchain indexer), `send-notification` (Expo push)
-- Types generated to `types/supabase.ts`
+- **Tables**: `proposals`, `device_tokens`, `sync_state`, `notification_history`, `profiles`, `activities`, `streaks`, `votes`
+- **Edge Functions**: `sync-proposals` (blockchain indexer), `send-notification` (Expo push), `link-wallet` (signed wallet link + reputation)
+- **Writes**: clients only read reputation tables; `profiles`/`activities`/`streaks`/`votes` are written by Edge Functions. Never write reputation from the app; add server logic instead (see `supabase/README.md`, "Who can write what")
+- **Reputation rules** (points, rank requirements) live in `supabase/functions/_shared/reputation-rules.ts`, imported by both the app (`lib/reputation.ts`) and `link-wallet`. Change them there only
+- `supabase/functions` is Deno code and is excluded from the app's `tsc`; the shared rules file must stay free of Deno/RN APIs
+- `types/supabase.ts` is hand-written; `npm run supabase:types` writes generated types to `types/supabase.generated.ts` for comparison
 
 ## Coding Conventions
 

@@ -41,7 +41,10 @@ async function fetchActiveStreak(profileId: string): Promise<Streak | null> {
     .select('*')
     .eq('profile_id', profileId)
     .eq('is_active', true)
-    .single();
+    // Merged profiles keep one active streak per type; the longest wins here
+    .order('length_weeks', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     if (error.code === 'PGRST116') {
@@ -52,7 +55,7 @@ async function fetchActiveStreak(profileId: string): Promise<Streak | null> {
     throw error;
   }
 
-  return data as Streak;
+  return (data as Streak | null) ?? null;
 }
 
 /**

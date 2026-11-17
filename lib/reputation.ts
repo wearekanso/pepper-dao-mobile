@@ -4,25 +4,18 @@
  * Point values, rank thresholds, and reputation calculation logic.
  */
 
+import {
+  RANK_ORDER as SHARED_RANK_ORDER,
+  RANK_REQUIREMENTS as SHARED_RANK_REQUIREMENTS,
+  REPUTATION_POINTS as SHARED_REPUTATION_POINTS,
+  type RankRequirement,
+} from '@/supabase/functions/_shared/reputation-rules';
 import type { Activity, EventType, Profile, Rank, RankDisplay } from '@/types/user';
 
 /**
- * Points awarded for each event type
+ * Points awarded for each event type (shared with the server)
  */
-export const REPUTATION_POINTS: Record<EventType, number> = {
-  WALLET_CONNECTED: 10,
-  FIRST_VOTE: 20,
-  VOTE: 10,
-  PROPOSAL_SUBMITTED: 0, // No points until engagement (anti-spam)
-  PROPOSAL_ENGAGED: 25,
-  PROPOSAL_PASSED: 75,
-  PROPOSAL_EXECUTED: 100,
-  STREAK_MILESTONE: 0, // Varies by milestone
-  STREAK_BROKEN: 0,
-  RANK_UP: 0,
-  STAKING_BONUS: 5, // Per week
-  DELEGATION_RECEIVED: 15,
-};
+export const REPUTATION_POINTS: Record<EventType, number> = SHARED_REPUTATION_POINTS;
 
 /**
  * Streak milestone bonuses (weeks -> points)
@@ -40,67 +33,12 @@ export const STREAK_MILESTONES: Record<number, number> = {
 export const STREAK_BONUS_AFTER_12 = 75;
 
 /**
- * Rank thresholds and requirements
+ * Rank thresholds and requirements (shared with the server, which awards
+ * ranks in link-wallet)
  */
-export interface RankRequirement {
-  points: number;
-  requiresWallet: boolean;
-  requiresVote: boolean;
-  requiresStreak: number; // Minimum streak weeks
-  requiresEngagedProposal: boolean;
-  requiresPassedProposal: boolean;
-}
+export type { RankRequirement };
 
-export const RANK_REQUIREMENTS: Record<Rank, RankRequirement> = {
-  OBSERVER: {
-    points: 0,
-    requiresWallet: false,
-    requiresVote: false,
-    requiresStreak: 0,
-    requiresEngagedProposal: false,
-    requiresPassedProposal: false,
-  },
-  MEMBER: {
-    points: 0,
-    requiresWallet: true,
-    requiresVote: false,
-    requiresStreak: 0,
-    requiresEngagedProposal: false,
-    requiresPassedProposal: false,
-  },
-  PARTICIPANT: {
-    points: 50,
-    requiresWallet: false,
-    requiresVote: true,
-    requiresStreak: 0,
-    requiresEngagedProposal: false,
-    requiresPassedProposal: false,
-  },
-  STEWARD: {
-    points: 250,
-    requiresWallet: false,
-    requiresVote: true,
-    requiresStreak: 4,
-    requiresEngagedProposal: false,
-    requiresPassedProposal: false,
-  },
-  INITIATOR: {
-    points: 500,
-    requiresWallet: false,
-    requiresVote: true,
-    requiresStreak: 0,
-    requiresEngagedProposal: true,
-    requiresPassedProposal: false,
-  },
-  GOVERNOR: {
-    points: 1000,
-    requiresWallet: false,
-    requiresVote: true,
-    requiresStreak: 0,
-    requiresEngagedProposal: false,
-    requiresPassedProposal: true,
-  },
-};
+export const RANK_REQUIREMENTS: Record<Rank, RankRequirement> = SHARED_RANK_REQUIREMENTS;
 
 /**
  * Rank labels for display
@@ -115,16 +53,9 @@ export const RANK_LABELS: Record<Rank, string> = {
 };
 
 /**
- * Rank order for comparison
+ * Rank order for comparison (shared with the server)
  */
-export const RANK_ORDER: Array<Rank> = [
-  'OBSERVER',
-  'MEMBER',
-  'PARTICIPANT',
-  'STEWARD',
-  'INITIATOR',
-  'GOVERNOR',
-];
+export const RANK_ORDER: Array<Rank> = [...SHARED_RANK_ORDER];
 
 /**
  * Get points for a specific event type

@@ -5,7 +5,7 @@ import {
   TRACK_KEY_PREFIX,
   type AragonGovernanceConfig,
 } from '@/config/aragon-governance';
-import { supabase, triggerProposalSync } from '@/config/supabase';
+import { supabase } from '@/config/supabase';
 import {
   generateTimeLabel,
   type GovernanceProposal,
@@ -308,19 +308,6 @@ export async function fetchGovernanceProposalById(
 }
 
 /**
- * Trigger a manual sync of proposals from the blockchain
- * Rate limited to prevent abuse (60 seconds minimum between syncs)
- */
-export async function refreshProposals(): Promise<{
-  success: boolean;
-  message: string;
-  newProposals?: number;
-}> {
-  console.log('[Governance API] Triggering proposal sync');
-  return triggerProposalSync();
-}
-
-/**
  * Get summary statistics for governance proposals
  */
 export function getGovernanceSummary(proposals: Array<GovernanceProposal>): {
@@ -357,35 +344,4 @@ export function getGovernanceSummary(proposals: Array<GovernanceProposal>): {
     executed,
     mostRecentLabel: label,
   };
-}
-
-/**
- * Get sync state information
- */
-export async function getSyncState(): Promise<{
-  lastSyncedBlock: number;
-  lastSyncAt: string | null;
-  syncInProgress: boolean;
-} | null> {
-  try {
-    const { data, error } = await supabase
-      .from('sync_state')
-      .select('*')
-      // The MainDao indexer's own row (the old indexer used 'default')
-      .eq('id', 'main_dao')
-      .single();
-
-    if (error || !data) {
-      return null;
-    }
-
-    return {
-      lastSyncedBlock: data.last_synced_block,
-      lastSyncAt: data.last_sync_at,
-      syncInProgress: data.sync_in_progress || false,
-    };
-  } catch (error) {
-    console.error('[Governance API] Error fetching sync state:', error);
-    return null;
-  }
 }

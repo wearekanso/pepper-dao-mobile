@@ -1,5 +1,8 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+
+import { hasSharedSecret, isServiceRequest } from '../_shared/auth.ts';
+import { json, preflight } from '../_shared/http.ts';
 import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38.6';
 
 /**
@@ -11,11 +14,18 @@ import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38
  *
  * DAO: 0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213 (chiliz-mainnet)
  *
- * Deployment: supabase functions deploy sync-proposals --no-verify-jwt
+ * Deployment: supabase functions deploy sync-proposals
+ * (verify_jwt = false in config.toml: the cron request carries no JWT)
+ *
+ * Only callers with the shared secret run it: the `x-sync-secret` header must
+ * match the SYNC_PROPOSALS_SECRET function secret (the cron job reads the same
+ * value from the Vault secret `sync_proposals_secret`), or the request must
+ * carry the service role key.
  *
  * Usage:
- * - Manual: curl -X POST https://<project>.supabase.co/functions/v1/sync-proposals
- * - Cron: Set up via Supabase Dashboard > Database > Extensions > pg_cron
+ * - Cron: every 2 minutes, see migration 20261117300000
+ * - Manual: curl -X POST https://<project>.supabase.co/functions/v1/sync-proposals \
+ *     -H "Authorization: Bearer <service role key>"
  *
  * Ankr Public Tier Limits (https://www.ankr.com/docs/rpc-service/service-plans/):
  * - Max block range: 1,000 blocks
@@ -58,7 +68,7 @@ const FIRST_INDEXED_BLOCK = BigInt(34_100_000);
  * sync_state row for this indexer. The old DAO's indexer wrote 'default'; a
  * separate row means an old run still going before this one is deployed
  * can't move the cursor past the track plugins' blocks.
- * Created by migration 20261116000000.
+ * Created by the baseline migration (20261117100000).
  */
 const SYNC_STATE_ID = 'main_dao';
 
@@ -279,14 +289,11 @@ interface ProposalMetadata {
 
 Deno.serve(async (req: Request) => {
   // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
+  if (req.method === 'OPTIONS') return preflight();
+
+  // Cron sends the shared secret; manual runs use the service role key
+  if (!hasSharedSecret(req, 'x-sync-secret', 'SYNC_PROPOSALS_SECRET') && !isServiceRequest(req)) {
+    return json({ error: 'Forbidden' }, 403);
   }
 
   const runStartedAt = Date.now();

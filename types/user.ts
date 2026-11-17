@@ -53,6 +53,8 @@ export type BrokenReason = (typeof BROKEN_REASONS)[number];
 export interface Profile {
   id: string;
   wallet_address: string | null;
+  /** Set by link-wallet after a valid signature; null = unproven */
+  wallet_verified_at: string | null;
   reputation_points: number;
   rank: Rank;
   current_streak_weeks: number;

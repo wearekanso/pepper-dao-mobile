@@ -1,6 +1,9 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+import { isServiceRequest } from '../_shared/auth.ts';
+import { json, preflight } from '../_shared/http.ts';
+
 /**
  * Send Notification Edge Function
  *
@@ -8,6 +11,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
  * Called by sync-proposals when new proposals are indexed.
  *
  * Deployment: supabase functions deploy send-notification
+ * (verify_jwt = false in config.toml; only requests with the service role key
+ * are accepted, checked in isServiceRequest)
  *
  * Usage:
  * POST /functions/v1/send-notification
@@ -90,21 +95,19 @@ async function sendExpoPushNotifications(messages: ExpoPushMessage[]): Promise<v
 
 Deno.serve(async (req: Request) => {
   // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
-  }
+  if (req.method === 'OPTIONS') return preflight();
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
       headers: { 'Content-Type': 'application/json' },
     });
+  }
+
+  // Only the server (sync-proposals) may send pushes. Every app user has a
+  // valid JWT through anonymous sign-in, so a JWT alone is not enough.
+  if (!isServiceRequest(req)) {
+    return json({ error: 'Forbidden' }, 403);
   }
 
   try {
@@ -187,11 +190,17 @@ Deno.serve(async (req: Request) => {
         notificationBody = payload.body || payload.title;
     }
 
-    // Build messages for all devices
-    const messages: ExpoPushMessage[] = deviceTokens
-      .filter((dt) => dt.expo_push_token && dt.expo_push_token.startsWith('ExponentPushToken'))
-      .map((dt) => ({
-        to: dt.expo_push_token,
+    // One message per device. A device can have a row per (anonymous) user
+    // after a reinstall, so the same token may appear more than once.
+    const uniqueTokens = [...new Set(
+      deviceTokens
+        .map((dt) => dt.expo_push_token)
+        .filter((token): token is string => !!token && token.startsWith('ExponentPushToken')),
+    )];
+
+    const messages: ExpoPushMessage[] = uniqueTokens
+      .map((token) => ({
+        to: token,
         title: notificationTitle,
         body: notificationBody,
         sound: 'default',
@@ -245,4 +254,3 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-

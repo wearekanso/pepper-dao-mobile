@@ -1,10 +1,9 @@
 # Supabase Configuration
 # Project: Pepper DAO Mobile
-# Project ID: dwzuolcegznclqfyijic
+# Remote project ref: ggehypjsdpouiklchate (link with `supabase link --project-ref ggehypjsdpouiklchate`)
 
-[project]
-id = "dwzuolcegznclqfyijic"
-name = "pepper-dao"
+# Local identifier only; the remote project is chosen by `supabase link`
+project_id = "pepper-dao"
 
 [api]
 enabled = true
@@ -22,9 +21,27 @@ port = 54323
 [auth]
 enabled = true
 site_url = "exp://localhost:8081"
+# The app signs every user in anonymously (contexts/user-context.tsx). Keep
+# this on, or `supabase config push` turns it off on the remote project.
+enable_anonymous_sign_ins = true
 
 [functions]
 # Edge Functions configuration
 # Deploy: supabase functions deploy <function-name>
 # Logs: supabase functions logs <function-name>
+
+# The pg_cron job calls sync-proposals without a JWT. Without this, a plain
+# `supabase functions deploy` turns JWT checks on and every cron run gets 401.
+[functions.sync-proposals]
+verify_jwt = false
+
+# Checks the service role key itself (isServiceRequest), so the gateway JWT
+# check is not needed and would only get in the way of new-style keys.
+[functions.send-notification]
+verify_jwt = false
+
+# Checks the caller's JWT itself with auth.getUser, which works with both
+# legacy and new Supabase signing keys.
+[functions.link-wallet]
+verify_jwt = false
 
