@@ -14,7 +14,7 @@ This directory contains the Supabase configuration, migrations, and Edge Functio
 supabase/
 ├── config.toml              # Supabase local config
 ├── migrations/              # Database migrations
-│   └── 20241229000000_create_governance_tables.sql
+│   └── 20261117100000_baseline.sql   # production schema baseline
 ├── functions/               # Edge Functions
 │   ├── sync-proposals/      # Indexes blockchain events
 │   │   └── index.ts
@@ -168,7 +168,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ## Cron Job
 
 `sync-proposals` runs every 2 minutes through pg_cron + pg_net. The job is
-created by `migrations/20261117000000_schedule_sync_proposals.sql`, so
+created by `migrations/20261117100000_baseline.sql`, so
 `supabase db push` sets it up; there is nothing to do by hand.
 
 ```sql

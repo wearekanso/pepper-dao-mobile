@@ -58,7 +58,7 @@ const FIRST_INDEXED_BLOCK = BigInt(34_100_000);
  * sync_state row for this indexer. The old DAO's indexer wrote 'default'; a
  * separate row means an old run still going before this one is deployed
  * can't move the cursor past the track plugins' blocks.
- * Created by migration 20261116000000.
+ * Created by the baseline migration (20261117100000).
  */
 const SYNC_STATE_ID = 'main_dao';
 
