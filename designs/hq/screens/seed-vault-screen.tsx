@@ -17,8 +17,9 @@ import { HQ_IMAGES } from '../lib/floors';
 import { HQ_COLORS, TYPE } from '../theme';
 
 /**
- * 1F · SEED VAULT — plant PEPPER (stake) to grow voting power, harvest
- * what is claimable, dig it back up (unstake).
+ * 1F · SEED VAULT — PEPPER in the old staking contract: harvest what is
+ * claimable, dig it back up (unstake). The old contract gives no voting
+ * power; that comes from locking PEPPER as vePEPPER.
  */
 export function SeedVaultScreen() {
   const { isConnected } = useWallet();
@@ -60,7 +61,7 @@ export function SeedVaultScreen() {
       onRefresh={() => refetch()}
     >
       {!isConnected ? (
-        <ConnectCard title="Plant your first seeds" message="Connect a wallet to stake PEPPER and earn voting power in the Ministers Hall." />
+        <ConnectCard title="Plant your first seeds" message="Connect a wallet to see your PEPPER in the old staking contract." />
       ) : (
         <>
           <View style={{ gap: 2 }}>
@@ -68,7 +69,7 @@ export function SeedVaultScreen() {
             <Text style={[TYPE.display56, { color: HQ_COLORS.green }]} numberOfLines={1} adjustsFontSizeToFit>
               {isLoading ? '…' : formatInteger(animatedStaked)}
             </Text>
-            <Text style={TYPE.body13}>{staked > 0 ? 'PEPPER staked · voting power active' : 'Nothing staked yet'}</Text>
+            <Text style={TYPE.body13}>{staked > 0 ? 'PEPPER in the old staking contract' : 'Nothing staked yet'}</Text>
           </View>
 
           <Animated.View>
@@ -111,7 +112,7 @@ export function SeedVaultScreen() {
       </Animated.View>
 
       <Text style={[TYPE.body13, { color: HQ_COLORS.dim }]}>
-        Staked PEPPER is your voting power in the Ministers Hall.
+        The old staking contract no longer gives voting power. Lock PEPPER as vePEPPER on Aragon to vote.
       </Text>
 
       <StakeSheet visible={sheetMode !== null} initialMode={sheetMode ?? 'stake'} onClose={() => setSheetMode(null)} />
