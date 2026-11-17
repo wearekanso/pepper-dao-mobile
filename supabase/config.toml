@@ -1,10 +1,9 @@
 # Supabase Configuration
 # Project: Pepper DAO Mobile
-# Project ID: dwzuolcegznclqfyijic
+# Remote project ref: ggehypjsdpouiklchate (link with `supabase link --project-ref ggehypjsdpouiklchate`)
 
-[project]
-id = "dwzuolcegznclqfyijic"
-name = "pepper-dao"
+# Local identifier only; the remote project is chosen by `supabase link`
+project_id = "pepper-dao"
 
 [api]
 enabled = true
