@@ -5,15 +5,16 @@ import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { PEPPER_DECIMALS } from '@/config/staking';
 import { useUser } from '@/contexts/user-context';
 import { useWallet } from '@/contexts/wallet-context';
 import { useActivities } from '@/hooks/use-activities';
-import { useStaking } from '@/hooks/use-staking';
+import { useVePepperVotes } from '@/hooks/use-vepepper';
 import { copyToClipboard } from '@/lib/clipboard';
 import { RANK_IMAGES } from '@/lib/rank-images';
 import { getEventTitle, getNextRank, RANK_LABELS, RANK_REQUIREMENTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
-import { formatCompact, formatDayMonth, shortenAddress } from '@/designs/thermal/lib/format';
+import { formatCompact, formatDayMonth, shortenAddress, tokenToNumber } from '@/designs/thermal/lib/format';
 
 import { Card, ListRow, ProgressBar, SectionLabel, StatRow, Touchable } from '../components/atoms';
 import { ConnectCard } from '../components/connect-card';
@@ -124,15 +125,14 @@ function NextRank({ profile }: { profile: Profile }) {
 }
 
 function OfficeStats({ profile }: { profile: Profile }) {
-  const { formattedStakedBalance } = useStaking();
-  const power = parseFloat(formattedStakedBalance) || 0;
+  const { data: votes } = useVePepperVotes();
 
   return (
     <StatRow
       stats={[
         { label: 'STREAK', value: `${profile.current_streak_weeks} WK` },
         { label: 'BEST', value: `${profile.longest_streak_weeks} WK` },
-        { label: 'POWER', value: formatCompact(power), unit: 'vePEPPER' },
+        { label: 'POWER', value: votes === undefined ? '–' : formatCompact(tokenToNumber(votes, PEPPER_DECIMALS)), unit: 'vePEPPER' },
       ]}
     />
   );
