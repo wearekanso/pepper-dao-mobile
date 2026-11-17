@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import { hasSharedSecret, isServiceRequest } from '../_shared/auth.ts';
+import { json, preflight } from '../_shared/http.ts';
 import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38.6';
 
 /**
@@ -288,22 +289,11 @@ interface ProposalMetadata {
 
 Deno.serve(async (req: Request) => {
   // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
-  }
+  if (req.method === 'OPTIONS') return preflight();
 
   // Cron sends the shared secret; manual runs use the service role key
   if (!hasSharedSecret(req, 'x-sync-secret', 'SYNC_PROPOSALS_SECRET') && !isServiceRequest(req)) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return json({ error: 'Forbidden' }, 403);
   }
 
   const runStartedAt = Date.now();

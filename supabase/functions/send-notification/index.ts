@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import { isServiceRequest } from '../_shared/auth.ts';
+import { json, preflight } from '../_shared/http.ts';
 
 /**
  * Send Notification Edge Function
@@ -94,15 +95,7 @@ async function sendExpoPushNotifications(messages: ExpoPushMessage[]): Promise<v
 
 Deno.serve(async (req: Request) => {
   // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
-  }
+  if (req.method === 'OPTIONS') return preflight();
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -114,10 +107,7 @@ Deno.serve(async (req: Request) => {
   // Only the server (sync-proposals) may send pushes. Every app user has a
   // valid JWT through anonymous sign-in, so a JWT alone is not enough.
   if (!isServiceRequest(req)) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return json({ error: 'Forbidden' }, 403);
   }
 
   try {

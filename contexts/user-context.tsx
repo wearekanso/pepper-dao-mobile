@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useReducer } from 'react';
 
 import { supabase } from '@/config/supabase';
@@ -85,6 +86,7 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
  */
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(userReducer, initialState);
+  const queryClient = useQueryClient();
 
   /**
    * Initialize auth - check for existing session or sign in anonymously
@@ -211,12 +213,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       try {
         const profile = await linkWallet({ profile: state.profile, address, walletProvider });
         dispatch({ type: 'SET_PROFILE', payload: profile });
+        // Linking can add activities and move streaks from an older profile
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['activities'] }),
+          queryClient.invalidateQueries({ queryKey: ['streaks'] }),
+        ]);
       } catch (error) {
         console.error('[UserContext] Error linking wallet:', error);
         throw error;
       }
     },
-    [state.profile],
+    [state.profile, queryClient],
   );
 
   /**

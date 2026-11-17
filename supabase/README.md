@@ -25,6 +25,7 @@ supabase/
 │   │   └── index.ts
 │   └── _shared/             # Shared by the functions
 │       ├── auth.ts               # service-role / shared-secret checks
+│       ├── http.ts               # JSON + CORS helpers
 │       └── reputation-rules.ts   # points and ranks; the app imports it too
 └── README.md
 ```
@@ -42,6 +43,7 @@ supabase/
 | `profiles` | One per (anonymous) user: wallet, reputation points, rank |
 | `activities` | Reputation history (points awarded, rank-ups) |
 | `streaks`, `votes` | Reputation inputs |
+| `wallet_rewards` | Wallets that have been paid WALLET_CONNECTED (server-only) |
 
 ### Who can write what
 
@@ -155,13 +157,21 @@ Links the connected wallet to the caller's profile, awards WALLET_CONNECTED
    with a wrong clock can still link.
 2. The wallet signs it; `{ "address", "message", "signature" }` links.
 
-For the address already on the profile, only `address` is needed and the rank
-is recalculated. The write is the `link_wallet()` SQL function: one
-transaction with the profile rows locked, so WALLET_CONNECTED is awarded once
-even with retries or parallel calls. If another profile holds the address (the
-owner reinstalled), its reputation (points, rank, flags, activities, streaks,
-votes) moves with the wallet and the old profile is reset, so a reinstall
-can't earn the reward again. Rank changes go through `promote_rank()`.
+For an address that is already on the profile **and** was verified by a
+signature (`profiles.wallet_verified_at`), only `address` is needed: the rank
+is recalculated and nothing moves. Wallets written before verification
+existed (while clients could still update profiles) are unproven, so their
+owners sign once.
+
+The write is the `link_wallet()` SQL function: one transaction, serialised
+per wallet with an advisory lock, with the profile rows locked.
+WALLET_CONNECTED is paid **once per wallet, ever** (`wallet_rewards`), so
+moving wallets between profiles earns nothing; total reward points can never
+exceed 10 x the number of distinct wallets. If another profile holds the
+address (the owner reinstalled), its reputation (points, rank, flags,
+activities, streaks, votes) moves with the wallet, one active streak per type
+is kept (the longer one) and the old profile is reset. Rank changes go through
+`promote_rank()`. `wallet_address` is unique case-insensitively.
 
 **Deploy**:
 ```bash
@@ -243,7 +253,9 @@ sends in `x-sync-secret` (`sync_proposals_secret`). Without them the job does
 nothing, so a local `supabase start` never calls production.
 
 The production project already has both. On a new remote project, create them
-once with the same random value for the secret on both sides:
+**before** running `supabase db push` (the migration warns if they are
+missing; without them the job is silently idle and nothing gets indexed), with
+the same random value for the secret on both sides:
 
 ```bash
 SECRET=$(openssl rand -hex 32)

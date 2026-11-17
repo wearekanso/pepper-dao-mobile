@@ -40,12 +40,22 @@ export async function linkWallet(params: LinkWalletParams): Promise<Profile> {
 }
 
 /**
- * True when the wallet user declined the request (EIP-1193 code 4001, or
- * ethers' ACTION_REJECTED). Those should not be retried automatically.
+ * True when the wallet user declined the request. Those should not be
+ * retried automatically. Covers EIP-1193 4001, ethers' ACTION_REJECTED,
+ * WalletConnect / Reown's 5000 ("User rejected") and wallets that only say
+ * so in the message.
  */
 export function isUserRejection(error: unknown): boolean {
-  const e = error as { code?: unknown; info?: { error?: { code?: unknown } } } | null;
-  return e?.code === 4001 || e?.code === 'ACTION_REJECTED' || e?.info?.error?.code === 4001;
+  const e = error as {
+    code?: unknown;
+    message?: unknown;
+    info?: { error?: { code?: unknown; message?: unknown } };
+  } | null;
+  const codes = [e?.code, e?.info?.error?.code];
+  if (codes.some((code) => code === 4001 || code === 5000 || code === 'ACTION_REJECTED')) return true;
+
+  const messages = [e?.message, e?.info?.error?.message].filter((m): m is string => typeof m === 'string');
+  return messages.some((m) => /user (rejected|denied|cancel)|rejected by user|request rejected|cancelled by user/i.test(m));
 }
 
 async function invokeLinkWallet<T>(body: Record<string, unknown>): Promise<T> {

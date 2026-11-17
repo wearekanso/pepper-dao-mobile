@@ -130,6 +130,8 @@ export interface Database {
         Row: {
           id: string;
           wallet_address: string | null;
+          /** Set by link-wallet after a valid signature; null = unproven */
+          wallet_verified_at: string | null;
           reputation_points: number;
           rank: Rank;
           current_streak_weeks: number;
@@ -144,6 +146,7 @@ export interface Database {
         Insert: {
           id: string;
           wallet_address?: string | null;
+          wallet_verified_at?: string | null;
           reputation_points?: number;
           rank?: Rank;
           current_streak_weeks?: number;

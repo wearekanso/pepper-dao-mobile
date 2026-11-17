@@ -29,6 +29,12 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [retryTick, setRetryTick] = useState(0);
 
+  // A retry belongs to one address; drop it when the connected address changes
+  useEffect(() => {
+    clearRetryTimer(retryTimerRef);
+    failedAttemptsRef.current = 0;
+  }, [address]);
+
   useEffect(() => {
     async function linkWallet() {
       if (!isConnected || !address || !profile) {
@@ -90,7 +96,11 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
 
           // Allow another attempt after a growing delay
           clearRetryTimer(retryTimerRef);
+          const retryAddress = address;
           retryTimerRef.current = setTimeout(() => {
+            retryTimerRef.current = null;
+            // Only retry for the address that failed
+            if (previousAddressRef.current !== retryAddress) return;
             previousAddressRef.current = undefined;
             hasRecalculatedRankRef.current = false;
             setRetryTick((tick) => tick + 1);

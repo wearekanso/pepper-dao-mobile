@@ -4,6 +4,7 @@ import { createPublicClient, getAddress, http, isAddress } from 'npm:viem@2.38.6
 import { chiliz } from 'npm:viem@2.38.6/chains';
 
 import { bearerToken } from '../_shared/auth.ts';
+import { json, preflight } from '../_shared/http.ts';
 import {
   eligibleRank,
   isHigherRank,
@@ -27,13 +28,16 @@ import {
  *    message. The message carries the profile id, address and server time
  *    and is valid for 10 minutes.
  *
- * The write itself is the link_wallet() SQL function (migration
- * 20261117400000): one transaction with the profile rows locked, so points
- * can't be awarded twice. If another profile holds the address (the owner
- * reinstalled the app), its reputation moves with the wallet to the caller.
+ * The write itself is the link_wallet() SQL function (migrations
+ * 20261117400000 and 20261117500000): one transaction, serialised per wallet,
+ * with the profile rows locked. WALLET_CONNECTED is paid once per wallet
+ * (wallet_rewards), so moving wallets between profiles earns nothing. If
+ * another profile holds the address (the owner reinstalled the app), its
+ * reputation moves with the wallet to the caller.
  *
- * Calling it for the wallet already on the profile needs no signature; it
- * only recalculates the rank.
+ * Calling it for a wallet that is already on the profile AND was verified by
+ * a signature needs no signature; it only recalculates the rank and moves
+ * nothing. Wallets written before verification existed must be signed for.
  *
  * Deployment: supabase functions deploy link-wallet
  * (verify_jwt = false in config.toml; the caller's JWT is checked here with
@@ -48,16 +52,14 @@ const MAX_INSTANCE_SKEW_MS = 30_000;
 const MESSAGE_PATTERN =
   /^Link this wallet to your Pepper DAO profile\.\n\nThis signature only proves you own the wallet\. It costs nothing and sends no transaction\.\n\nProfile: ([0-9a-f-]{36})\nWallet: (0x[0-9a-fA-F]{40})\nIssued at: (\S+)$/;
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
-};
+/** Reused across requests; only used for signature checks */
+const chilizClient = createPublicClient({
+  chain: chiliz,
+  transport: http(Deno.env.get('CHILIZ_RPC_URL') ?? 'https://rpc.ankr.com/chiliz'),
+});
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: CORS_HEADERS });
-  }
+  if (req.method === 'OPTIONS') return preflight();
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
   }
@@ -99,23 +101,28 @@ Deno.serve(async (req: Request) => {
     .single();
   if (profileError || !profile) return json({ error: 'Profile not found' }, 404);
 
-  // 3. Ownership proof for a new link
-  const alreadyLinked = profile.wallet_address?.toLowerCase() === address.toLowerCase();
-  if (!alreadyLinked) {
+  // 3. A verified wallet already on the profile: rank recalculation only,
+  //    nothing is linked or moved
+  const verifiedAndLinked =
+    !!profile.wallet_verified_at && profile.wallet_address?.toLowerCase() === address.toLowerCase();
+
+  let linked = profile;
+  if (!verifiedAndLinked) {
+    // 4. Ownership proof, then link + reward atomically
     const proofError = await checkSignature(body.message, body.signature, userId, address);
     if (proofError) return json({ error: proofError }, 401);
-  }
 
-  // 4. Link + reward, atomically
-  const { data: linked, error: linkError } = await supabase.rpc('link_wallet', {
-    p_user_id: userId,
-    p_address: address,
-    p_reward: REPUTATION_POINTS.WALLET_CONNECTED,
-    p_rank_order: [...RANK_ORDER],
-  });
-  if (linkError || !linked) {
-    console.error('[link-wallet] link_wallet failed:', linkError);
-    return json({ error: 'Could not link wallet' }, 500);
+    const { data, error: linkError } = await supabase.rpc('link_wallet', {
+      p_user_id: userId,
+      p_address: address,
+      p_reward: REPUTATION_POINTS.WALLET_CONNECTED,
+      p_rank_order: [...RANK_ORDER],
+    });
+    if (linkError || !data) {
+      console.error('[link-wallet] link_wallet failed:', linkError);
+      return json({ error: 'Could not link wallet' }, 500);
+    }
+    linked = data;
   }
 
   // 5. Promotion (never a demotion), only if the rank is still what we read
@@ -182,23 +189,11 @@ async function checkSignature(
     return 'The link message has expired, please try again';
   }
 
-  const client = createPublicClient({
-    chain: chiliz,
-    transport: http(Deno.env.get('CHILIZ_RPC_URL') ?? 'https://rpc.ankr.com/chiliz'),
-  });
-
   try {
-    const valid = await client.verifyMessage({ address, message, signature: signature as `0x${string}` });
+    const valid = await chilizClient.verifyMessage({ address, message, signature: signature as `0x${string}` });
     return valid ? null : 'The signature does not match this wallet';
   } catch (error) {
     console.error('[link-wallet] Signature check failed:', error);
     return 'Could not verify the signature';
   }
-}
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
 }
