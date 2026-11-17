@@ -30,3 +30,8 @@ enable_anonymous_sign_ins = true
 # Deploy: supabase functions deploy <function-name>
 # Logs: supabase functions logs <function-name>
 
+# The pg_cron job calls sync-proposals without a JWT. Without this, a plain
+# `supabase functions deploy` turns JWT checks on and every cron run gets 401.
+[functions.sync-proposals]
+verify_jwt = false
+

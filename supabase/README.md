@@ -47,12 +47,13 @@ proposals
 
 device_tokens
 ├── expo_push_token (text, unique)
+├── user_id (uuid, owner; RLS: users only see and change their own rows)
 ├── wallet_address (text, optional)
 ├── platform (ios/android/web)
 └── is_active (boolean)
 
 sync_state
-├── id ('default')
+├── id ('main_dao'; 'default' is the retired old-DAO indexer)
 ├── last_synced_block (int)
 └── sync_in_progress (boolean)
 
@@ -133,7 +134,8 @@ supabase link --project-ref ggehypjsdpouiklchate
 supabase db push
 
 # Generate types
-supabase gen types typescript --project-id ggehypjsdpouiklchate > types/supabase.ts
+# types/supabase.ts is hand-written; this writes types/supabase.generated.ts
+npm run supabase:types
 ```
 
 ### Deploy Functions
@@ -168,8 +170,22 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ## Cron Job
 
 `sync-proposals` runs every 2 minutes through pg_cron + pg_net. The job is
-created by `migrations/20261117100000_baseline.sql`, so
-`supabase db push` sets it up; there is nothing to do by hand.
+created by `migrations/20261117200000_tighten_rls_and_cron.sql` and reads the
+function URL from the Vault secret `sync_proposals_url`. Without the secret the
+job does nothing, so a local `supabase start` never calls production.
+
+The production project already has the secret. On a new remote project,
+create it once:
+
+```sql
+SELECT vault.create_secret(
+  'https://<project-ref>.supabase.co/functions/v1/sync-proposals',
+  'sync_proposals_url'
+);
+```
+
+`sync-proposals` must stay deployed without JWT checks (`verify_jwt = false`
+in `config.toml`), because the cron request carries no JWT.
 
 ```sql
 -- Check the job and its recent runs
@@ -178,8 +194,20 @@ SELECT status, start_time, return_message
 FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 ```
 
-A local `supabase start` applies the same migration and calls the production
-function. Stop it locally with `SELECT cron.unschedule('sync-proposals');`.
+## Migrations Baseline
+
+`20261117100000_baseline.sql` is the production schema as of 2026-11-17. It
+replaced the older migration files, which had drifted from production. The
+production migration history lists only the baseline and the migrations after
+it, so `supabase db push` applies new files normally.
+
+On a brand-new project, `supabase db push` applies the baseline from scratch.
+To point the CLI at a database that already has this schema (for example a
+restored copy), mark the baseline as applied instead of running it:
+
+```bash
+supabase migration repair --status applied 20261117100000
+```
 
 ## Ankr RPC Limits
 
@@ -198,13 +226,14 @@ Reference: https://www.ankr.com/docs/rpc-service/service-plans/
 ### Sync stuck (sync_in_progress = true)
 
 ```sql
-UPDATE sync_state SET sync_in_progress = false WHERE id = 'default';
+UPDATE sync_state SET sync_in_progress = false, sync_started_at = NULL WHERE id = 'main_dao';
 ```
 
 ### Reset sync to specific block
 
 ```sql
-UPDATE sync_state SET last_synced_block = 10000000 WHERE id = 'default';
+-- The track plugins were deployed at block 34,113,649 or later
+UPDATE sync_state SET last_synced_block = 34100000 WHERE id = 'main_dao';
 ```
 
 ### Check sync status

@@ -9,7 +9,8 @@
 --   1. public schema: tables, functions, triggers, RLS policies, grants
 --   2. auth.users trigger that creates a profile for every new user
 --   3. sync cursor for the MainDao indexer
---   4. pg_cron job that runs sync-proposals every 2 minutes
+--
+-- The sync-proposals cron job is set up in 20261117200000.
 --
 -- New migrations go in new files after this one; do not edit it.
 
@@ -731,31 +732,3 @@ CREATE TRIGGER on_auth_user_created
 INSERT INTO public.sync_state (id, last_synced_block, last_sync_at, sync_in_progress, error_message)
 VALUES ('main_dao', 34100000, NULL, false, NULL)
 ON CONFLICT (id) DO NOTHING;
-
--- ----------------------------------------------------------------------------
--- 4. Run sync-proposals every 2 minutes
---
--- WARNING: the URL points at the PRODUCTION project. A local `supabase start`
--- / `supabase db reset` also applies this, and the local database then calls
--- the production function every 2 minutes. That is harmless (the function is
--- rate limited and idempotent); stop it locally with
---   SELECT cron.unschedule('sync-proposals');
--- ----------------------------------------------------------------------------
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
-
--- Re-running replaces the job instead of adding a second one
-SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = 'sync-proposals';
-
-SELECT cron.schedule(
-  'sync-proposals',
-  '*/2 * * * *',
-  $$
-  SELECT net.http_post(
-    url := 'https://ggehypjsdpouiklchate.supabase.co/functions/v1/sync-proposals',
-    headers := '{"Content-Type": "application/json"}'::jsonb,
-    body := '{}'::jsonb,
-    timeout_milliseconds := 150000
-  );
-  $$
-);

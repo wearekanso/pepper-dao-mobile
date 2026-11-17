@@ -47,3 +47,6 @@ app-example
 # Supabase CLI local state
 supabase/.temp/
 supabase/.branches/
+
+# Generated Supabase types (compare against the hand-written types/supabase.ts)
+types/supabase.generated.ts
