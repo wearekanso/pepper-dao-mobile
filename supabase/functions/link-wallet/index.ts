@@ -10,6 +10,7 @@ import {
   isHigherRank,
   RANK_ORDER,
   REPUTATION_POINTS,
+  type RankInput,
   type RuleRank,
 } from '../_shared/reputation-rules.ts';
 
@@ -21,12 +22,16 @@ import {
  * 20261117300000), so this is the only way a wallet_address, points or a rank
  * change gets written.
  *
- * Two calls:
- * 1. `{ address, challenge: true }` returns `{ message }`, built here with the
- *    server clock, so a phone with a wrong clock can still link.
+ * The server decides when a signature is needed; the app never guesses from
+ * its (possibly stale) copy of the profile:
+ * 1. `{ address }`: if the wallet is on the profile and verified, the rank is
+ *    recalculated and `{ profile }` comes back. Otherwise the answer is
+ *    `{ profile, signatureRequired: true, message }`; the message is built
+ *    here with the server clock (profile id, address, time; valid for 10
+ *    minutes), so a phone with a wrong clock can still link. A wallet that is
+ *    on the profile but unverified still gets its rank recalculated.
  * 2. `{ address, message, signature }`: the wallet's signature of that
- *    message. The message carries the profile id, address and server time
- *    and is valid for 10 minutes.
+ *    message; links the wallet.
  *
  * The write itself is the link_wallet() SQL function (migrations
  * 20261117400000 and 20261117500000): one transaction, serialised per wallet,
@@ -35,9 +40,8 @@ import {
  * another profile holds the address (the owner reinstalled the app), its
  * reputation moves with the wallet to the caller.
  *
- * Calling it for a wallet that is already on the profile AND was verified by
- * a signature needs no signature; it only recalculates the rank and moves
- * nothing. Wallets written before verification existed must be signed for.
+ * Only a signed request links or moves anything. Wallets written before
+ * verification existed are unverified and are asked to sign.
  *
  * Deployment: supabase functions deploy link-wallet
  * (verify_jwt = false in config.toml; the caller's JWT is checked here with
@@ -78,7 +82,7 @@ Deno.serve(async (req: Request) => {
   const userId = userData.user.id;
 
   // 2. Input
-  let body: { address?: unknown; challenge?: unknown; message?: unknown; signature?: unknown };
+  let body: { address?: unknown; message?: unknown; signature?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -90,10 +94,6 @@ Deno.serve(async (req: Request) => {
   }
   const address = getAddress(body.address);
 
-  if (body.challenge === true) {
-    return json({ message: buildMessage(userId, address, new Date()) });
-  }
-
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
@@ -101,14 +101,11 @@ Deno.serve(async (req: Request) => {
     .single();
   if (profileError || !profile) return json({ error: 'Profile not found' }, 404);
 
-  // 3. A verified wallet already on the profile: rank recalculation only,
-  //    nothing is linked or moved
-  const verifiedAndLinked =
-    !!profile.wallet_verified_at && profile.wallet_address?.toLowerCase() === address.toLowerCase();
+  let current: Profile = profile;
 
-  let linked = profile;
-  if (!verifiedAndLinked) {
-    // 4. Ownership proof, then link + reward atomically
+  // 3. A signed request links the wallet (link + reward, atomically)
+  const hasProof = body.message !== undefined || body.signature !== undefined;
+  if (hasProof && !isVerifiedLink(current, address)) {
     const proofError = await checkSignature(body.message, body.signature, userId, address);
     if (proofError) return json({ error: proofError }, 401);
 
@@ -122,29 +119,62 @@ Deno.serve(async (req: Request) => {
       console.error('[link-wallet] link_wallet failed:', linkError);
       return json({ error: 'Could not link wallet' }, 500);
     }
-    linked = data;
+    current = data;
   }
 
-  // 5. Promotion (never a demotion), only if the rank is still what we read
-  const currentRank = linked.rank as RuleRank;
-  const eligible = eligibleRank(linked);
-  if (!isHigherRank(eligible, currentRank)) {
-    return json({ profile: linked });
+  // 4. Rank for the wallet on the profile (promotions only)
+  if (isOnProfile(current, address)) {
+    current = await promoteIfEligible(supabase, userId, current);
   }
 
-  const { data: promoted, error: promoteError } = await supabase.rpc('promote_rank', {
+  // 5. Anything short of a verified link needs the wallet's signature
+  if (isVerifiedLink(current, address)) {
+    return json({ profile: current });
+  }
+  return json({
+    profile: current,
+    signatureRequired: true,
+    message: buildMessage(userId, address, new Date()),
+  });
+});
+
+interface Profile extends RankInput {
+  rank: string;
+  wallet_verified_at: string | null;
+}
+
+function isOnProfile(profile: Profile, address: string): boolean {
+  return profile.wallet_address?.toLowerCase() === address.toLowerCase();
+}
+
+/** The wallet is on the profile and was proven by a signature */
+function isVerifiedLink(profile: Profile, address: string): boolean {
+  return isOnProfile(profile, address) && !!profile.wallet_verified_at;
+}
+
+/** Promote to the highest eligible rank; never demotes */
+async function promoteIfEligible(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  profile: Profile,
+): Promise<Profile> {
+  const currentRank = profile.rank as RuleRank;
+  const eligible = eligibleRank(profile);
+  if (!isHigherRank(eligible, currentRank)) return profile;
+
+  // Only applies if the rank is still what we read
+  const { data, error } = await supabase.rpc('promote_rank', {
     p_user_id: userId,
     p_from: currentRank,
     p_to: eligible,
   });
-  if (promoteError || !promoted) {
-    // The link went through; the rank is recalculated on the next call
-    console.error('[link-wallet] promote_rank failed:', promoteError);
-    return json({ profile: linked });
+  if (error || !data) {
+    // The rank is recalculated on the next call
+    console.error('[link-wallet] promote_rank failed:', error);
+    return profile;
   }
-
-  return json({ profile: promoted });
-});
+  return data as Profile;
+}
 
 function buildMessage(profileId: string, address: string, issuedAt: Date): string {
   return [
