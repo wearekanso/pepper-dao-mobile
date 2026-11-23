@@ -14,7 +14,7 @@ import { fetchNativeBalance } from '@/services/chiliz-api';
 import type { GovernanceProposal, VoteOption } from '@/types/governance';
 
 import { castDemoVote, DEMO_LOW_CHZ, DEMO_VOTING_POWER, isDemoProposalId } from '../lib/demo-vote';
-import { formatDayMonth, tokenToNumber } from '../lib/format';
+import { formatStreakDeadline, tokenToNumber } from '../lib/format';
 import { getProposalLabel, getProposalTitle } from '../lib/proposal';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE, VOTE_COLORS } from '../theme';
 import { ChevronLink, DashedDivider, StatusTag, Touchable } from './atoms';
@@ -297,7 +297,7 @@ function SuccessBody({ result, points, isFirstVote, streakWeeks, showTx }: Succe
         <ResultBox
           label="STREAK"
           value={streakWeeks === 1 ? '1 WEEK' : `${streakWeeks} WEEKS`}
-          hint={`next by ${formatDayMonth(new Date(getStreakPeriodEnd(getStreakPeriod(result.date.getTime()) + 1) - 1).toISOString())}`}
+          hint={`next by ${formatStreakDeadline(getStreakPeriodEnd(getStreakPeriod(result.date.getTime()) + 1))}`}
         />
       </View>
 

@@ -38,7 +38,7 @@ import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
 import { createDemoActivities, createDemoProfile, isDemoPower } from '../lib/demo-power';
 import { useFocusKey } from '../hooks/use-focus-key';
-import { formatDayMonth, formatInteger } from '../lib/format';
+import { formatDayMonth, formatInteger, formatStreakDeadline } from '../lib/format';
 import { formatShu, getHeatLevel, getHeatProgress, getRankLabel, HEAT_LEVELS, MAX_HEAT_LEVEL } from '../lib/heat-levels';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
@@ -469,9 +469,8 @@ function getStreakHint(profile: Profile, lastVoteAt: number | null): string {
   const lastVotePeriod = lastVoteAt === null ? null : getStreakPeriod(lastVoteAt);
 
   if (lastVotePeriod === currentPeriod) {
-    // Last moment of the next period (its end is exclusive)
-    const nextDeadline = new Date(getStreakPeriodEnd(currentPeriod + 1) - 1).toISOString();
-    return `You've voted this period. Vote again by ${formatDayMonth(nextDeadline)} to keep it going.`;
+    const nextDeadline = formatStreakDeadline(getStreakPeriodEnd(currentPeriod + 1));
+    return `You've voted this period. Vote again by ${nextDeadline} to keep it going.`;
   }
   if (profile.current_streak_weeks === 0 && lastVotePeriod !== null && lastVotePeriod < currentPeriod - 1) {
     return 'Your streak ended. Vote on any proposal to start a new one.';
