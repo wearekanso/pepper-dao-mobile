@@ -73,20 +73,26 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
         failedAttemptsRef.current.delete(attemptAddress);
         console.log('[WalletProfileLinker] Link result:', status);
       } catch (error) {
-        console.error('[WalletProfileLinker] Failed to link wallet:', error);
+        // Only a final failure is an error; declines and retried failures
+        // are expected (an expired or still-open wallet prompt) and warn
 
         // The user said no: remember it, so it is not asked on every launch
         if (isUserRejection(error)) {
+          console.warn('[WalletProfileLinker] Signature declined:', error);
           markDeclined(attemptAddress);
           return;
         }
 
         // A failure for an address that is no longer connected: nothing to retry
-        if (latestAddressRef.current !== attemptAddress) return;
+        if (latestAddressRef.current !== attemptAddress) {
+          console.warn('[WalletProfileLinker] Link failed for a wallet that is no longer connected:', error);
+          return;
+        }
 
         const failures = (failedAttemptsRef.current.get(attemptAddress) ?? 0) + 1;
         failedAttemptsRef.current.set(attemptAddress, failures);
         if (failures > MAX_RETRIES) {
+          console.error('[WalletProfileLinker] Failed to link wallet, giving up:', error);
           Alert.alert(
             'Wallet not linked',
             'We could not link your wallet to your profile. Reconnect your wallet to try again.',
@@ -95,6 +101,7 @@ export function WalletProfileLinker({ children }: { children: React.ReactNode })
         }
 
         // Allow another attempt after a growing delay
+        console.warn(`[WalletProfileLinker] Link attempt ${failures} failed, retrying:`, error);
         clearRetryTimer(retryTimerRef);
         retryTimerRef.current = setTimeout(() => {
           retryTimerRef.current = null;

@@ -48,6 +48,10 @@ export async function linkWallet(params: LinkWalletParams): Promise<LinkWalletRe
  * retried automatically. Covers EIP-1193 4001, ethers' ACTION_REJECTED,
  * WalletConnect / Reown's 5000 ("User rejected") and wallets that only say
  * so in the message.
+ *
+ * Not a rejection: MetaMask's -32002 ("request already pending"), which
+ * Reown also wraps in 5000. It means an earlier prompt is still open in the
+ * wallet, so it is retried like any other failure.
  */
 export function isUserRejection(error: unknown): boolean {
   const e = error as {
@@ -55,10 +59,12 @@ export function isUserRejection(error: unknown): boolean {
     message?: unknown;
     info?: { error?: { code?: unknown; message?: unknown } };
   } | null;
+  const messages = [e?.message, e?.info?.error?.message].filter((m): m is string => typeof m === 'string');
+  if (messages.some((m) => /already pending|-32002/i.test(m))) return false;
+
   const codes = [e?.code, e?.info?.error?.code];
   if (codes.some((code) => code === 4001 || code === 5000 || code === 'ACTION_REJECTED')) return true;
 
-  const messages = [e?.message, e?.info?.error?.message].filter((m): m is string => typeof m === 'string');
   return messages.some((m) => /user (rejected|denied|cancel)|rejected by user|request rejected|cancelled by user/i.test(m));
 }
 
