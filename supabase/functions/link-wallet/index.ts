@@ -4,15 +4,9 @@ import { createPublicClient, getAddress, http, isAddress } from 'npm:viem@2.38.6
 import { chiliz } from 'npm:viem@2.38.6/chains';
 
 import { bearerToken } from '../_shared/auth.ts';
+import { isRewardDataCurrent, promoteIfEligible, refreshWalletRewards, type RewardProfile, type SupabaseLike } from '../_shared/award.ts';
 import { json, preflight } from '../_shared/http.ts';
-import {
-  eligibleRank,
-  isHigherRank,
-  RANK_ORDER,
-  REPUTATION_POINTS,
-  type RankInput,
-  type RuleRank,
-} from '../_shared/reputation-rules.ts';
+import { RANK_ORDER, REPUTATION_POINTS } from '../_shared/reputation-rules.ts';
 
 /**
  * Link Wallet Edge Function
@@ -42,6 +36,10 @@ import {
  *
  * Only a signed request links or moves anything. Wallets written before
  * verification existed are unverified and are asked to sign.
+ *
+ * A verified wallet is also paid what it earned before it was linked (votes,
+ * streaks, proposals; see _shared/rewards.ts). Each reward is paid once per
+ * wallet, so calling this again pays nothing new.
  *
  * Deployment: supabase functions deploy link-wallet
  * (verify_jwt = false in config.toml; the caller's JWT is checked here with
@@ -101,7 +99,7 @@ Deno.serve(async (req: Request) => {
     .single();
   if (profileError || !profile) return json({ error: 'Profile not found' }, 404);
 
-  let current: Profile = profile;
+  let current: RewardProfile = profile;
 
   // 3. A signed request links the wallet (link + reward, atomically)
   const hasProof = body.message !== undefined || body.signature !== undefined;
@@ -122,9 +120,11 @@ Deno.serve(async (req: Request) => {
     current = data;
   }
 
-  // 4. Rank for the wallet on the profile (promotions only)
-  if (isOnProfile(current, address)) {
-    current = await promoteIfEligible(supabase, userId, current);
+  // 4. Rewards the verified wallet earned, then the rank (promotions only)
+  if (isVerifiedLink(current, address)) {
+    current = await payEarnedRewards(supabase, current, address);
+  } else if (isOnProfile(current, address)) {
+    current = await promoteIfEligible(supabase, current);
   }
 
   // 5. Anything short of a verified link needs the wallet's signature
@@ -138,42 +138,36 @@ Deno.serve(async (req: Request) => {
   });
 });
 
-interface Profile extends RankInput {
-  rank: string;
-  wallet_verified_at: string | null;
-}
 
-function isOnProfile(profile: Profile, address: string): boolean {
+function isOnProfile(profile: RewardProfile, address: string): boolean {
   return profile.wallet_address?.toLowerCase() === address.toLowerCase();
 }
 
 /** The wallet is on the profile and was proven by a signature */
-function isVerifiedLink(profile: Profile, address: string): boolean {
+function isVerifiedLink(profile: RewardProfile, address: string): boolean {
   return isOnProfile(profile, address) && !!profile.wallet_verified_at;
 }
 
-/** Promote to the highest eligible rank; never demotes */
-async function promoteIfEligible(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  profile: Profile,
-): Promise<Profile> {
-  const currentRank = profile.rank as RuleRank;
-  const eligible = eligibleRank(profile);
-  if (!isHigherRank(eligible, currentRank)) return profile;
-
-  // Only applies if the rank is still what we read
-  const { data, error } = await supabase.rpc('promote_rank', {
-    p_user_id: userId,
-    p_from: currentRank,
-    p_to: eligible,
-  });
-  if (error || !data) {
-    // The rank is recalculated on the next call
-    console.error('[link-wallet] promote_rank failed:', error);
-    return profile;
+/**
+ * Pay what the wallet earned before (votes, streaks, proposals) and promote
+ * the rank. Waits for a current vote index: until then sync-proposals pays
+ * it later. A failure leaves the link in place; the next sync run pays it.
+ */
+async function payEarnedRewards(
+  supabase: SupabaseLike,
+  profile: RewardProfile,
+  address: string,
+): Promise<RewardProfile> {
+  try {
+    const headBlock = await chilizClient.getBlockNumber();
+    if (await isRewardDataCurrent(supabase, headBlock)) {
+      const paid = await refreshWalletRewards(supabase, address);
+      if (paid) return paid as RewardProfile;
+    }
+  } catch (error) {
+    console.error('[link-wallet] Paying earned rewards failed:', error);
   }
-  return data as Profile;
+  return (await promoteIfEligible(supabase, profile)) as RewardProfile;
 }
 
 function buildMessage(profileId: string, address: string, issuedAt: Date): string {

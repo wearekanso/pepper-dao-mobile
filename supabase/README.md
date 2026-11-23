@@ -44,6 +44,8 @@ supabase/
 | `activities` | Reputation history (points awarded, rank-ups) |
 | `streaks`, `votes` | Reputation inputs |
 | `wallet_rewards` | Wallets that have been paid WALLET_CONNECTED (server-only) |
+| `chain_votes` | Every VoteCast of the track plugins (server-only) |
+| `reward_grants` | Vote, streak and proposal rewards paid, one row per wallet and reward (server-only) |
 
 ### Who can write what
 
@@ -53,9 +55,29 @@ write is creating an empty profile (`id` only) if the auth trigger has not run.
 Wallets are linked through `link-wallet`, which checks a wallet signature, so
 nobody can set their own points or rank or claim someone else's address.
 
-Points and rank requirements live in `functions/_shared/reputation-rules.ts`,
-which both `lib/reputation.ts` (app) and `link-wallet` (server) import, so the
-UI never promises a rank the server doesn't give.
+Points, streak rules and rank requirements live in
+`functions/_shared/reputation-rules.ts`, which the app (`lib/reputation.ts`,
+`lib/streaks.ts`) and the server import, so the UI never promises what the
+server doesn't pay.
+
+### Rewards
+
+- `WALLET_CONNECTED`: `link-wallet`, once per wallet (`wallet_rewards`).
+- Votes, streaks, proposals: `sync-proposals` indexes every `VoteCast` into
+  `chain_votes`; the reward engine (`functions/_shared/rewards.ts`) turns a
+  wallet's votes and proposals into grants and `apply_rewards()` pays them.
+  Only verified wallets earn; `reward_grants` pays each reward key once per
+  wallet, so re-runs, reinstalls and moved wallets never pay twice.
+  - First vote +20, each other proposal voted +10.
+  - Streak: two-week periods; a vote in each period with an open proposal
+    keeps it (periods without an open proposal are skipped). Bonuses at 2, 4,
+    8 and 12 weeks, then every 4 weeks.
+  - Proposals you created: turnout reached the track's minimum participation
+    +25, passed +75, executed +100.
+- When paid: voters seen in a sync run at once; every verified wallet is
+  re-checked hourly (ended streaks, passed proposals); a newly linked wallet
+  in `link-wallet`. Nothing is paid until the vote index has reached the chain
+  head, so first votes and streaks are never computed from partial history.
 
 Push tokens are registered with the `register_device_token()` RPC. There is
 one row per (token, user): a reinstall adds a row for the new anonymous user,
@@ -95,7 +117,8 @@ notification_history
 
 ### sync-proposals
 
-Indexes `ProposalCreated` events from the Aragon Staged Processor contract.
+Indexes `ProposalCreated` events from the MainDao track plugins, then
+`VoteCast` events and rewards (see Rewards).
 
 **Endpoint**: `POST /functions/v1/sync-proposals`
 
@@ -236,6 +259,8 @@ Set by hand once per project:
   Vault secret `sync_proposals_secret` (see Cron Job)
 - `CHILIZ_RPC_URL` (optional) - RPC that link-wallet uses for smart-wallet
   signatures; defaults to `https://rpc.ankr.com/chiliz`
+- `CHILIZ_LOGS_RPC_URL` (optional) - RPC that sync-proposals reads `VoteCast`
+  logs from in 100,000-block ranges; defaults to `https://rpc.chiliz.com`
 
 For the mobile app, add to `.env`:
 

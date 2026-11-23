@@ -16,6 +16,8 @@ import { useUser } from '@/contexts/user-context';
 import { useWallet } from '@/contexts/wallet-context';
 import { useActivities } from '@/hooks/use-activities';
 import { RANK_IMAGES } from '@/lib/rank-images';
+import { getCurrentPeriodEnd } from '@/lib/streaks';
+import { getStreakPeriod, getStreakPeriodEnd } from '@/supabase/functions/_shared/reputation-rules';
 import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS, REPUTATION_POINTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
 
@@ -36,7 +38,7 @@ import { WalletChip } from '../components/wallet-chip';
 import { useCountUp } from '../hooks/use-count-up';
 import { createDemoActivities, createDemoProfile, isDemoPower } from '../lib/demo-power';
 import { useFocusKey } from '../hooks/use-focus-key';
-import { formatDayMonth, formatInteger } from '../lib/format';
+import { formatDayMonth, formatInteger, formatStreakDeadline } from '../lib/format';
 import { formatShu, getHeatLevel, getHeatProgress, getRankLabel, HEAT_LEVELS, MAX_HEAT_LEVEL } from '../lib/heat-levels';
 import { INK, SIZE, SPACE, STATUS_COLORS, THERMAL_COLORS, TYPE } from '../theme';
 
@@ -82,7 +84,7 @@ export function PowerScreen() {
           <HeatCamera profile={profile} variant={CORE_VARIANT} isGuest={!isConnected} scrollY={scrollY} />
           {isConnected ? (
             <>
-              <StreakPanel profile={profile} />
+              <StreakPanel profile={profile} isDemo={isDemo} />
               <NextLevelPanel profile={profile} />
               <Animated.View style={[styles.row, { gap: 12 }]}>
                 <PixelButton label="LOCK PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
@@ -91,7 +93,7 @@ export function PowerScreen() {
               <HeatLog profile={profile} isDemo={isDemo} />
             </>
           ) : (
-            <GuestPanel onConnect={() => void connect()} />
+            <GuestPanel isReturning={!!profile.wallet_verified_at} onConnect={() => void connect()} />
           )}
         </>
       ) : null}
@@ -302,7 +304,18 @@ function ScaleCell({ color, delay }: { color: string; delay: number }) {
 }
 
 /** No wallet yet: what linking unlocks, and the first two REP sources */
-function GuestPanel({ onConnect }: { onConnect: () => void }) {
+function GuestPanel({ isReturning, onConnect }: { isReturning: boolean; onConnect: () => void }) {
+  // Already linked once: the wallet reward is paid, so only ask to reconnect
+  if (isReturning) {
+    return (
+      <Panel index={1}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>WALLET DISCONNECTED</Text>
+        <Text style={TYPE.body14}>Reconnect your wallet to see your streak, level and heat log.</Text>
+        <PixelButton label="RECONNECT WALLET >" variant="gold" onPress={onConnect} />
+      </Panel>
+    );
+  }
+
   return (
     <Panel index={1}>
       <Text style={[TYPE.label12, { color: INK.muted }]}>NO HEAT SIGNATURE YET</Text>
@@ -328,10 +341,12 @@ function GuestPanel({ onConnect }: { onConnect: () => void }) {
   );
 }
 
-function StreakPanel({ profile }: { profile: Profile }) {
+function StreakPanel({ profile, isDemo }: { profile: Profile; isDemo: boolean }) {
   const weeks = profile.current_streak_weeks;
   const next = getNextStreakMilestone(weeks);
-  const daysLeft = getStreakDaysLeft(profile.last_activity_at);
+  // Same query as the heat log below, so it is fetched once
+  const feed = useActivities({ profileId: isDemo ? undefined : profile.id, limit: 12 });
+  const hint = getStreakHint(profile, getLastVoteAt(feed.records));
 
   return (
     <Panel index={1}>
@@ -355,9 +370,7 @@ function StreakPanel({ profile }: { profile: Profile }) {
         </View>
       ) : null}
       <Text style={[TYPE.meta18, { color: INK.muted }]}>
-        {weeks === 0 || daysLeft === null
-          ? 'Vote on any proposal to start your streak.'
-          : `Vote on any proposal within ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} to keep your streak.`}
+        {hint}
       </Text>
     </Panel>
   );
@@ -436,13 +449,44 @@ function getRequirements(profile: Profile, rank: Profile['rank']): Array<Require
   return items;
 }
 
-/** Whole days left in the 7-day window that keeps the weekly streak alive */
-function getStreakDaysLeft(lastActivityAt: string | null): number | null {
-  if (!lastActivityAt) return null;
-  const last = Date.parse(lastActivityAt);
-  if (!Number.isFinite(last)) return null;
-  const left = Math.ceil((last + STREAK_WINDOW_MS - Date.now()) / DAY_MS);
-  return left > 0 ? left : null;
+/**
+ * Whole days left in the current two-week streak period. A vote in every
+ * period with an open proposal keeps the streak (reputation-rules.ts).
+ */
+function getStreakPeriodDaysLeft(): number {
+  return Math.max(1, Math.ceil((getCurrentPeriodEnd().getTime() - Date.now()) / DAY_MS));
+}
+
+/**
+ * What to do next for the streak. The server's streak count already skips
+ * periods with nothing to vote on; the latest vote tells whether this period
+ * is done or the streak has lapsed.
+ */
+function getStreakHint(profile: Profile, lastVoteAt: number | null): string {
+  if (!profile.has_voted) return 'Vote on any proposal to start your streak.';
+
+  const currentPeriod = getStreakPeriod(Date.now());
+  const lastVotePeriod = lastVoteAt === null ? null : getStreakPeriod(lastVoteAt);
+
+  if (lastVotePeriod === currentPeriod) {
+    const nextDeadline = formatStreakDeadline(getStreakPeriodEnd(currentPeriod + 1));
+    return `You've voted this period. Vote again by ${nextDeadline} to keep it going.`;
+  }
+  if (profile.current_streak_weeks === 0 && lastVotePeriod !== null && lastVotePeriod < currentPeriod - 1) {
+    return 'Your streak ended. Vote on any proposal to start a new one.';
+  }
+
+  const daysLeft = getStreakPeriodDaysLeft();
+  return `Vote once every two weeks to keep it going. This period ends in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}.`;
+}
+
+/** When the latest vote that earned REP was cast; null when none is loaded */
+function getLastVoteAt(activities: Array<Activity>): number | null {
+  const times = activities
+    .filter((activity) => activity.event_type === 'VOTE' || activity.event_type === 'FIRST_VOTE')
+    .map((activity) => Date.parse(String(activity.metadata?.earned_at ?? activity.created_at)))
+    .filter((time) => !Number.isNaN(time));
+  return times.length > 0 ? Math.max(...times) : null;
 }
 
 function FlickerFlame() {
@@ -580,7 +624,6 @@ const GUEST_STEPS = [
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const STREAK_WINDOW_MS = 7 * DAY_MS;
 
 const STAGE_HEIGHT = 508;
 const ART_SIZE = 110;

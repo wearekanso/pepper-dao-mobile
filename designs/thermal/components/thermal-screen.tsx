@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,11 @@ interface ThermalScreenProps {
   bottomSpace?: number;
   /** Rendered above the scroll view (fixed docks, overlays) */
   overlay?: ReactNode;
+  /**
+   * True while the data behind the screen is being fetched. The spinner only
+   * follows it after the user pulls to refresh, so background refetches
+   * (focus, intervals) never show it or push the content down.
+   */
   refreshing?: boolean;
   onRefresh?: () => void;
   /** Pass one in to read the scroll offset from the screen's content */
@@ -50,6 +55,7 @@ export function ThermalScreen({
   const ownScrollY = useSharedValue(0);
   const scrollY = externalScrollY ?? ownScrollY;
   const focusKey = useFocusKey();
+  const pullRefresh = usePullRefresh(refreshing);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
@@ -71,8 +77,11 @@ export function ThermalScreen({
         refreshControl={
           onRefresh ? (
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
+              refreshing={pullRefresh.active}
+              onRefresh={() => {
+                pullRefresh.start();
+                onRefresh();
+              }}
               tintColor={THERMAL_COLORS.gold}
               colors={[THERMAL_COLORS.orange]}
               progressBackgroundColor={THERMAL_COLORS.void}
@@ -98,6 +107,28 @@ export function ThermalScreen({
   );
 }
 
+/**
+ * Spinner state for a user's pull: on from the pull until `refreshing` has
+ * gone true and back to false (or straight away if no fetch starts)
+ */
+function usePullRefresh(refreshing: boolean): { active: boolean; start: () => void } {
+  const [phase, setPhase] = useState<PullPhase>('idle');
+
+  useEffect(() => {
+    if (phase === 'pulled' && refreshing) setPhase('fetching');
+    if (phase === 'fetching' && !refreshing) setPhase('idle');
+  }, [phase, refreshing]);
+
+  // A pull that starts no fetch (data still fresh) must not spin forever
+  useEffect(() => {
+    if (phase !== 'pulled') return;
+    const timer = setTimeout(() => setPhase((current) => (current === 'pulled' ? 'idle' : current)), PULL_START_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  return { active: phase !== 'idle', start: () => setPhase('pulled') };
+}
+
 /** Darkens content as it scrolls under the status bar */
 function TopFade({ height }: { height: number }) {
   const { width } = useWindowDimensions();
@@ -120,6 +151,9 @@ function TopFade({ height }: { height: number }) {
   );
 }
 
+/** How long a pull waits for its fetch to start before the spinner gives up */
+const PULL_START_TIMEOUT_MS = 1500;
+
 const styles = StyleSheet.create({
   topFade: {
     position: 'absolute',
@@ -131,3 +165,5 @@ const styles = StyleSheet.create({
     backgroundColor: THERMAL_COLORS.void,
   },
 });
+
+type PullPhase = 'idle' | 'pulled' | 'fetching';

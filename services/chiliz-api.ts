@@ -1,4 +1,4 @@
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, type Address } from 'viem';
 
 import { chiliz } from '../config/chains';
 import {
@@ -31,6 +31,8 @@ export interface ChilizScanTx {
   value: string;
   timeStamp: string;
   isError?: string;
+  /** Internal transactions only: 'call', 'delegatecall', 'create', … */
+  type?: string;
 }
 
 interface ChilizScanResponse<T> {
@@ -96,6 +98,9 @@ const publicClient = createPublicClient({
   chain: chiliz,
   transport: http(),
 });
+
+/** Chiliz Chain makes a block every 3 seconds: 24 h = 28,800 blocks */
+const CHILIZ_BLOCKS_PER_DAY = BigInt(28_800);
 
 // Chiliz uses Routescan API for Etherscan-compatible endpoints
 // Chain ID 88888 = Chiliz mainnet
@@ -222,68 +227,6 @@ export async function fetchTreasuryChzBalances(): Promise<
   return fetchNativeBalances(DAO_TREASURY_ADDRESSES);
 }
 
-async function fetchAccountChz24hDelta(address: string): Promise<bigint> {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const sinceSeconds = nowSeconds - 60 * 60 * 24;
-
-  const params = new URLSearchParams({
-    module: 'account',
-    action: 'txlist',
-    address,
-    startblock: '0',
-    endblock: '99999999',
-    sort: 'desc',
-  });
-
-  if (CHILIZSCAN_API_KEY) {
-    params.append('apikey', CHILIZSCAN_API_KEY);
-  }
-
-  const response = await fetch(`${CHILIZSCAN_API_URL}?${params.toString()}`);
-
-  if (!response.ok) {
-    throw new Error(
-      `[ChilizAPI] Failed to fetch transactions for ${address}: ${response.status}`,
-    );
-  }
-
-  const json = (await response.json()) as ChilizScanResponse<
-    Array<ChilizScanTx> | string
-  >;
-
-  if (!Array.isArray(json.result)) {
-    return BigInt(0);
-  }
-
-  const addressLower = address.toLowerCase();
-
-  return json.result.reduce<bigint>((total, tx) => {
-    const timestamp = Number(tx.timeStamp);
-
-    if (Number.isNaN(timestamp) || timestamp < sinceSeconds) {
-      return total;
-    }
-
-    if (tx.isError === '1') {
-      return total;
-    }
-
-    const value = BigInt(tx.value);
-    const fromLower = tx.from.toLowerCase();
-    const toLower = tx.to.toLowerCase();
-
-    if (toLower === addressLower) {
-      return total + value;
-    }
-
-    if (fromLower === addressLower) {
-      return total - value;
-    }
-
-    return total;
-  }, BigInt(0));
-}
-
 export interface TreasuryChzTx {
   hash: string;
   from: string;
@@ -293,139 +236,116 @@ export interface TreasuryChzTx {
   direction: 'in' | 'out';
 }
 
+/**
+ * CHZ moving in or out of the DAO treasury in `window`, newest first.
+ *
+ * Reads two explorer lists: `txlist` (transactions sent to or from the
+ * treasury) and `txlistinternal`, because the DAO pays out through
+ * execute(), so its payouts are internal `call`s that `txlist` never shows.
+ * Internal `delegatecall`s are skipped: every incoming transfer lists one
+ * that moves no CHZ of its own.
+ */
 export async function fetchTreasuryChzTxs(
   window: TreasuryWindow,
 ): Promise<Array<TreasuryChzTx>> {
   const sinceSeconds = getSinceSecondsForWindow(window);
+  const perAddress = await Promise.all(
+    DAO_TREASURY_ADDRESSES.map(async (address) => {
+      const [txs, internalTxs] = await Promise.all([
+        fetchExplorerTxs('txlist', address),
+        fetchExplorerTxs('txlistinternal', address),
+      ]);
+      const payouts = internalTxs.filter((tx) => tx.type?.toLowerCase() === 'call' && tx.value !== '0');
+      return [...txs, ...payouts]
+        .map((tx) => toTreasuryTx(tx, address, sinceSeconds))
+        .filter((tx): tx is TreasuryChzTx => tx !== null);
+    }),
+  );
 
-  const allTxs: Array<TreasuryChzTx> = [];
+  return perAddress.flat().sort((a, b) => b.timestamp - a.timestamp);
+}
 
-  for (const address of DAO_TREASURY_ADDRESSES) {
-    // Use Etherscan-compatible RPC API format (Blockscout standard)
-    const params = new URLSearchParams({
-      module: 'account',
-      action: 'txlist',
-      address,
-      startblock: '0',
-      endblock: '99999999',
-      sort: 'desc',
-    });
-
-    if (CHILIZSCAN_API_KEY) {
-      params.append('apikey', CHILIZSCAN_API_KEY);
-    }
-
-    const url = `${CHILIZSCAN_API_URL}?${params.toString()}`;
-
-    console.log('[ChilizAPI] fetchTreasuryChzTxs request', {
-      address,
-      url,
-    });
-
-    try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        console.warn(
-          '[ChilizAPI] fetchTreasuryChzTxs non-200 response',
-          response.status,
-        );
-        continue;
-      }
-
-      const json = (await response.json()) as ChilizScanResponse<
-        Array<ChilizScanTx> | string
-      >;
-
-      console.log('[ChilizAPI] fetchTreasuryChzTxs raw response', {
-        status: json.status,
-        message: json.message,
-        resultType: typeof json.result,
-        isArray: Array.isArray(json.result),
-      });
-
-      if (!Array.isArray(json.result)) {
-        console.warn(
-          '[ChilizAPI] fetchTreasuryChzTxs unexpected result shape',
-          json.message,
-        );
-        continue;
-      }
-
-      const addressLower = address.toLowerCase();
-
-      const filtered = json.result
-        .filter((tx) => {
-          const timestamp = Number(tx.timeStamp);
-
-          if (Number.isNaN(timestamp)) {
-            return false;
-          }
-
-          if (sinceSeconds > 0 && timestamp < sinceSeconds) {
-            return false;
-          }
-
-          if (tx.isError === '1') {
-            return false;
-          }
-
-          const fromLower = tx.from.toLowerCase();
-          const toLower = tx.to.toLowerCase();
-
-          return fromLower === addressLower || toLower === addressLower;
-        })
-        .map<TreasuryChzTx>((tx) => {
-          const value = BigInt(tx.value);
-          const timestamp = Number(tx.timeStamp);
-          const toLower = tx.to.toLowerCase();
-          const direction: 'in' | 'out' =
-            toLower === addressLower ? 'in' : 'out';
-
-          return {
-            hash: tx.hash,
-            from: tx.from,
-            to: tx.to,
-            value,
-            timestamp,
-            direction,
-          };
-        });
-
-      console.log('[ChilizAPI] fetchTreasuryChzTxs response', {
-        address,
-        count: filtered.length,
-      });
-
-      allTxs.push(...filtered);
-    } catch (error) {
-      console.error('[ChilizAPI] fetchTreasuryChzTxs error', {
-        address,
-        error,
-      });
-      continue;
-    }
+/** One explorer account list for `address`; empty (and logged) on failure */
+async function fetchExplorerTxs(
+  action: 'txlist' | 'txlistinternal',
+  address: string,
+): Promise<Array<ChilizScanTx>> {
+  const params = new URLSearchParams({
+    module: 'account',
+    action,
+    address,
+    startblock: '0',
+    endblock: '99999999',
+    sort: 'desc',
+  });
+  if (CHILIZSCAN_API_KEY) {
+    params.append('apikey', CHILIZSCAN_API_KEY);
   }
 
-  allTxs.sort((a, b) => b.timestamp - a.timestamp);
+  try {
+    const response = await fetch(`${CHILIZSCAN_API_URL}?${params.toString()}`);
+    if (!response.ok) {
+      console.warn('[ChilizAPI] treasury txs non-200 response', { action, status: response.status });
+      return [];
+    }
+    const json = (await response.json()) as ChilizScanResponse<Array<ChilizScanTx> | string>;
+    // "No transactions found" comes back as an empty result, not an error
+    return Array.isArray(json.result) ? json.result : [];
+  } catch (error) {
+    console.warn('[ChilizAPI] treasury txs request failed', { action, address, error });
+    return [];
+  }
+}
 
-  return allTxs;
+/** The transfer as seen from the treasury, or null if it is failed, too old or not the treasury's */
+function toTreasuryTx(tx: ChilizScanTx, address: string, sinceSeconds: number): TreasuryChzTx | null {
+  const timestamp = Number(tx.timeStamp);
+  if (Number.isNaN(timestamp) || (sinceSeconds > 0 && timestamp < sinceSeconds)) return null;
+  if (tx.isError === '1') return null;
+
+  const addressLower = address.toLowerCase();
+  const isIn = tx.to.toLowerCase() === addressLower;
+  if (!isIn && tx.from.toLowerCase() !== addressLower) return null;
+
+  return {
+    hash: tx.hash,
+    from: tx.from,
+    to: tx.to,
+    value: BigInt(tx.value),
+    timestamp,
+    direction: isIn ? 'in' : 'out',
+  };
 }
 
 export async function fetchTreasuryChzTxs24h(): Promise<Array<TreasuryChzTx>> {
   return fetchTreasuryChzTxs('24h');
 }
 
+/**
+ * How much the DAO treasury's CHZ balance changed over the last 24 hours.
+ *
+ * Read as balance now minus balance a day of blocks ago, not by summing
+ * transfers: the DAO pays out through execute() (internal calls that txlist
+ * does not return) and every incoming transfer also shows a delegatecall
+ * entry that moves nothing, so transfer lists give the wrong sign or miss
+ * payouts. Both public RPCs answer balance reads at past blocks.
+ */
 export async function fetchTreasuryChz24hDelta(): Promise<bigint | null> {
   try {
-    let totalDelta = BigInt(0);
+    const latestBlock = await publicClient.getBlockNumber();
+    const dayAgoBlock = latestBlock > CHILIZ_BLOCKS_PER_DAY ? latestBlock - CHILIZ_BLOCKS_PER_DAY : BigInt(0);
 
-    for (const address of DAO_TREASURY_ADDRESSES) {
-      // const delta = await fetchAccountChz24hDelta(address);
-      // totalDelta += delta;
-    }
+    const deltas = await Promise.all(
+      DAO_TREASURY_ADDRESSES.map(async (address) => {
+        const [now, dayAgo] = await Promise.all([
+          publicClient.getBalance({ address: address as Address, blockNumber: latestBlock }),
+          publicClient.getBalance({ address: address as Address, blockNumber: dayAgoBlock }),
+        ]);
+        return now - dayAgo;
+      }),
+    );
 
-    return totalDelta;
+    return deltas.reduce((total, delta) => total + delta, BigInt(0));
   } catch (error) {
     console.error('[ChilizAPI] Failed to fetch treasury 24h CHZ delta', error);
     return null;

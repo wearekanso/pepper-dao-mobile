@@ -5,9 +5,12 @@
  */
 
 import {
+  getStreakMilestonePoints,
   RANK_ORDER as SHARED_RANK_ORDER,
   RANK_REQUIREMENTS as SHARED_RANK_REQUIREMENTS,
   REPUTATION_POINTS as SHARED_REPUTATION_POINTS,
+  STREAK_BONUS_AFTER_12,
+  STREAK_MILESTONES,
   type RankRequirement,
 } from '@/supabase/functions/_shared/reputation-rules';
 import type { Activity, EventType, Profile, Rank, RankDisplay } from '@/types/user';
@@ -18,19 +21,9 @@ import type { Activity, EventType, Profile, Rank, RankDisplay } from '@/types/us
 export const REPUTATION_POINTS: Record<EventType, number> = SHARED_REPUTATION_POINTS;
 
 /**
- * Streak milestone bonuses (weeks -> points)
+ * Streak bonuses (shared with the server, which pays them in sync-proposals)
  */
-export const STREAK_MILESTONES: Record<number, number> = {
-  2: 30,
-  4: 60,
-  8: 120,
-  12: 200,
-};
-
-/**
- * Points for streaks beyond 12 weeks (every 4 weeks)
- */
-export const STREAK_BONUS_AFTER_12 = 75;
+export { getStreakMilestonePoints, STREAK_BONUS_AFTER_12, STREAK_MILESTONES };
 
 /**
  * Rank thresholds and requirements (shared with the server, which awards
@@ -62,22 +55,6 @@ export const RANK_ORDER: Array<Rank> = [...SHARED_RANK_ORDER];
  */
 export function getPointsForEvent(eventType: EventType): number {
   return REPUTATION_POINTS[eventType];
-}
-
-/**
- * Get streak milestone points
- */
-export function getStreakMilestonePoints(weeks: number): number {
-  if (STREAK_MILESTONES[weeks]) {
-    return STREAK_MILESTONES[weeks];
-  }
-
-  // After 12 weeks, award points every 4 weeks
-  if (weeks > 12 && weeks % 4 === 0) {
-    return STREAK_BONUS_AFTER_12;
-  }
-
-  return 0;
 }
 
 /**
@@ -180,7 +157,7 @@ export function getEventTitle(activity: Activity): string {
     case 'PROPOSAL_SUBMITTED':
       return `Submitted Proposal #${activity.proposal_id}`;
     case 'PROPOSAL_ENGAGED':
-      return `Proposal #${activity.proposal_id} reached engagement`;
+      return `Proposal #${activity.proposal_id} reached its turnout`;
     case 'PROPOSAL_PASSED':
       return `Proposal #${activity.proposal_id} passed!`;
     case 'PROPOSAL_EXECUTED':

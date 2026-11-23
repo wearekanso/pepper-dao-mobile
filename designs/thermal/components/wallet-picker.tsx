@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { FEATURED_WALLETS } from '@/config/appkit';
+import { useUser } from '@/contexts/user-context';
 import { setWalletConnectOverride } from '@/contexts/wallet-context';
 import { telemetry } from '@/lib/telemetry';
 
@@ -44,6 +45,9 @@ interface WalletPickerSheetProps {
 }
 
 function WalletPickerSheet({ visible, onClose }: WalletPickerSheetProps) {
+  // Linked before: the wallet reward is already paid, so don't promise it again
+  const isReturning = !!useUser().profile?.wallet_verified_at;
+
   async function openReown(view: 'Connect' | 'AllWallets', walletId?: string) {
     onClose();
     telemetry.trackWalletConnectOpened('reown');
@@ -99,7 +103,7 @@ function WalletPickerSheet({ visible, onClose }: WalletPickerSheetProps) {
       </View>
 
       <View style={styles.between}>
-        <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{`+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link`}</Text>
+        <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{isReturning ? 'Reconnect your wallet' : `+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link`}</Text>
         <Touchable onPress={() => void openReown('Connect')} hitSlop={8} style={[styles.between, { gap: 6 }]}>
           <Text style={[TYPE.meta18, { color: INK.muted }]}>{'Email & social'}</Text>
           <Text style={[TYPE.label12, { color: INK.muted }]}>{'>'}</Text>

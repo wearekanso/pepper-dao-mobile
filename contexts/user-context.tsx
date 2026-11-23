@@ -221,23 +221,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     ) => {
       if (!state.profile) return null;
 
-      try {
-        const { profile, status } = await linkWallet({
-          address,
-          walletProvider,
-          allowSignature: options.allowSignature,
-        });
-        dispatch({ type: 'SET_PROFILE', payload: profile });
-        // Linking can add activities and move streaks from an older profile
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['activities'] }),
-          queryClient.invalidateQueries({ queryKey: ['streaks'] }),
-        ]);
-        return status;
-      } catch (error) {
-        console.error('[UserContext] Error linking wallet:', error);
-        throw error;
-      }
+      // Errors go to the caller (WalletProfileLinker), which logs them: it
+      // knows whether a failure is retried, declined or final
+      const { profile, status } = await linkWallet({
+        address,
+        walletProvider,
+        allowSignature: options.allowSignature,
+      });
+      dispatch({ type: 'SET_PROFILE', payload: profile });
+      // Linking can add activities and move streaks from an older profile
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['activities'] }),
+        queryClient.invalidateQueries({ queryKey: ['streaks'] }),
+      ]);
+      return status;
     },
     [state.profile, queryClient],
   );

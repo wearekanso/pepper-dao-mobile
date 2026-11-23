@@ -52,18 +52,22 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
   const steps = demo ? DEMO_STEPS : getLockSteps(value);
 
   const preview = useQuery({
-    // Own prefix: a finished transaction invalidates ['vepepper'], previews never change
+    // Own prefix: a finished transaction invalidates ['vepepper']. A preview
+    // only drifts with the lock's starting age, so a minute is fresh enough
     queryKey: ['vepepper-preview', amount],
     queryFn: () => previewVotingPower(value),
     enabled: isValid,
-    staleTime: Infinity,
+    staleTime: 60_000,
   });
 
-  // Curve and exit queue settings come from the contracts, not constants
+  // Curve and exit queue settings come from the contracts, not constants.
+  // Multipliers are per locked PEPPER; a new lock starts a bit above 1x
+  // because the escrow dates it from the last weekly checkpoint.
   const atStart = preview.data ? tokenToNumber(preview.data.atStart, PEPPER_DECIMALS) : 0;
   const atMax = preview.data ? tokenToNumber(preview.data.atMax, PEPPER_DECIMALS) : 0;
   const startShare = atMax > 0 ? atStart / atMax : 0;
-  const maxMultiplier = atStart > 0 ? Number((atMax / atStart).toFixed(1)) : 3;
+  const startMultiplier = amountNum > 0 && atStart > 0 ? Number((atStart / amountNum).toFixed(2)) : 1;
+  const maxMultiplier = amountNum > 0 && atMax > 0 ? Number((atMax / amountNum).toFixed(1)) : 3;
   const exitFeePercent = exitFeeToPercent(shownAccount?.exitFeeBasisPoints ?? DEFAULT_EXIT_FEE_BASIS_POINTS);
   const exitCooldown = shownAccount?.exitCooldown ?? DEFAULT_EXIT_COOLDOWN;
 
@@ -159,7 +163,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
             <View style={styles.between}>
               <PowerValue label="NOW" value={previewValue(preview.data?.atStart)} color={THERMAL_COLORS.gold} />
               <PowerValue
-                label={preview.data ? `AFTER ${formatWeeks(preview.data.maxTime)}` : 'AT MAX'}
+                label={preview.data ? `AFTER ${formatWeeks(preview.data.secondsToMax)}` : 'AT MAX'}
                 value={previewValue(preview.data?.atMax)}
                 color={THERMAL_COLORS.cream}
                 align="right"
@@ -167,7 +171,7 @@ export function useLockTab({ vePepper, demo, onDone }: UseLockTabOptions): {
             </View>
             <PixelBar colors={getHeatBarColors(startShare)} height={8} delay={100} />
             <View style={styles.between}>
-              <Text style={[TYPE.label10, { color: THERMAL_COLORS.magenta }]}>1X</Text>
+              <Text style={[TYPE.label10, { color: THERMAL_COLORS.magenta }]}>{`${startMultiplier}X`}</Text>
               <Text style={[TYPE.label10, { color: THERMAL_COLORS.goldSoft }]}>{`${maxMultiplier}X`}</Text>
             </View>
           </View>

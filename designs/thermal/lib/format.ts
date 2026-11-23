@@ -104,6 +104,18 @@ export function formatDayMonth(iso: string): string {
   return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
 }
 
+/**
+ * The last moment of a streak period, in the device's time zone: "14 DEC
+ * 02:59". Periods end at Monday 00:00 UTC, which falls on a different local
+ * day in different time zones, so a day alone would be wrong for someone
+ * (in Turkey a bare "14 DEC" reads as all of Monday, but it ends at 02:59).
+ */
+export function formatStreakDeadline(periodEndMs: number): string {
+  const last = new Date(periodEndMs - 1);
+  const time = `${String(last.getHours()).padStart(2, '0')}:${String(last.getMinutes()).padStart(2, '0')}`;
+  return `${last.getDate()} ${MONTHS[last.getMonth()]} ${time}`;
+}
+
 /** Proposal date → "2 SEP 2025" */
 export function formatShortDate(value: string | null | undefined): string {
   const time = parseDateMs(value);

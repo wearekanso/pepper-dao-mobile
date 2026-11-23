@@ -63,6 +63,8 @@ export const VEPEPPER_CONTRACTS = {
   exitQueue: '0xcBfc2F764cB77F909314f31219aeF4d6ECbFd5f8',
   /** Voting power curve: grows linearly with lock age, capped after 52 weeks */
   curve: '0xc0A7e07F03a6309595cA55127d60a02876D4f583',
+  /** Epoch clock: a new lock starts at the previous weekly checkpoint, not at the deposit time */
+  clock: '0x055080324082cA1Cc62EB9fc7a4e3093e1e3dC3d',
   /** IVotes adapter the track plugins read votes from; owners delegate here */
   votesAdapter: PEPPER_DAO_GOVERNANCE_CONFIG.votingToken,
 } as const;
