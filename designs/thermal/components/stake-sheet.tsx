@@ -4,6 +4,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useStaking } from '@/hooks/use-staking';
 import { useVePepper } from '@/hooks/use-vepepper';
+import { TX_CANCELLED_MESSAGE } from '@/services/vepepper-api';
 
 import { createDemoVePepperAccount, DEMO_OLD_STAKED } from '../lib/demo-power';
 import { formatAmount, formatInteger } from '../lib/format';
@@ -221,10 +222,16 @@ function demoVePepper(vePepper: ReturnType<typeof useVePepper>): ReturnType<type
 }
 
 function TxError({ message }: { message: string }) {
+  // Declining in the wallet isn't a failure: nothing was sent
+  const isCancelled = message === TX_CANCELLED_MESSAGE;
   return (
-    <View style={styles.notice}>
-      <Text style={[TYPE.label12, { color: STATUS_COLORS.negative.text }]}>TRANSACTION FAILED</Text>
-      <Text style={[TYPE.body14, { color: INK.muted }]}>{message}</Text>
+    <View style={[styles.notice, isCancelled && styles.noticeCancelled]}>
+      <Text style={[TYPE.label12, { color: isCancelled ? THERMAL_COLORS.cream : STATUS_COLORS.negative.text }]}>
+        {isCancelled ? 'TRANSACTION CANCELLED' : 'TRANSACTION FAILED'}
+      </Text>
+      <Text style={[TYPE.body14, { color: INK.muted }]}>
+        {isCancelled ? 'You declined it in your wallet. Nothing was sent.' : message}
+      </Text>
     </View>
   );
 }
@@ -270,6 +277,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACE.rowX,
     borderWidth: SIZE.stroke,
     borderColor: STATUS_COLORS.negative.stroke,
+  },
+  noticeCancelled: {
+    borderColor: THERMAL_COLORS.border,
   },
 });
 

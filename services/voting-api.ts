@@ -15,6 +15,7 @@ import { createPublicClient, http, type Address } from 'viem';
 import { TOKEN_VOTING_ABI, VOTING_TOKEN_ABI } from '@/config/aragon-abis';
 import { PEPPER_DAO_GOVERNANCE_CONFIG } from '@/config/aragon-governance';
 import { chiliz } from '@/config/chains';
+import { isUserRejection } from '@/services/wallet-link-api';
 import type { GovernanceProposal, VoteOption } from '@/types/governance';
 
 /**
@@ -246,7 +247,9 @@ export async function submitVote(
       txHash,
     };
   } catch (error) {
-    console.error('[VotingAPI] Vote failed:', error);
+    // Declining in the wallet is the user's choice, not an app error
+    if (isUserRejection(error)) console.warn('[VotingAPI] Vote declined in the wallet');
+    else console.error('[VotingAPI] Vote failed:', error);
     return {
       status: 'error',
       error: parseVotingError(error),
