@@ -599,19 +599,6 @@ function CouncilPanel({ proposal }: { proposal: GovernanceProposal }) {
   );
 }
 
-interface TextPart {
-  text: string;
-  isLink: boolean;
-}
-
-interface FreshVote {
-  option: Exclude<VoteOption, 'NONE'>;
-  txHash: string;
-  date: Date;
-  /** REP the vote earned (first vote pays more) */
-  points: number;
-}
-
 const VOTE_OPTIONS: Array<Exclude<VoteOption, 'NONE'>> = ['YES', 'NO', 'ABSTAIN'];
 /** Step number box per stage state (V2 status colors) */
 const STEP_BOX: Record<StageState, { box: object; number: string }> = {
@@ -668,3 +655,16 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 });
+
+interface TextPart {
+  text: string;
+  isLink: boolean;
+}
+
+interface FreshVote {
+  option: Exclude<VoteOption, 'NONE'>;
+  txHash: string;
+  date: Date;
+  /** REP the vote earned (first vote pays more) */
+  points: number;
+}

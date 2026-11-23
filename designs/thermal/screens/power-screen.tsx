@@ -17,6 +17,7 @@ import { useWallet } from '@/contexts/wallet-context';
 import { useActivities } from '@/hooks/use-activities';
 import { RANK_IMAGES } from '@/lib/rank-images';
 import { getCurrentPeriodEnd } from '@/lib/streaks';
+import { getStreakPeriod, getStreakPeriodEnd } from '@/supabase/functions/_shared/reputation-rules';
 import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS, REPUTATION_POINTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
 
@@ -83,7 +84,7 @@ export function PowerScreen() {
           <HeatCamera profile={profile} variant={CORE_VARIANT} isGuest={!isConnected} scrollY={scrollY} />
           {isConnected ? (
             <>
-              <StreakPanel profile={profile} />
+              <StreakPanel profile={profile} isDemo={isDemo} />
               <NextLevelPanel profile={profile} />
               <Animated.View style={[styles.row, { gap: 12 }]}>
                 <PixelButton label="LOCK PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => setIsStakeOpen(true)} />
@@ -340,10 +341,12 @@ function GuestPanel({ isReturning, onConnect }: { isReturning: boolean; onConnec
   );
 }
 
-function StreakPanel({ profile }: { profile: Profile }) {
+function StreakPanel({ profile, isDemo }: { profile: Profile; isDemo: boolean }) {
   const weeks = profile.current_streak_weeks;
   const next = getNextStreakMilestone(weeks);
-  const daysLeft = getStreakPeriodDaysLeft();
+  // Same query as the heat log below, so it is fetched once
+  const feed = useActivities({ profileId: isDemo ? undefined : profile.id, limit: 12 });
+  const hint = getStreakHint(profile, getLastVoteAt(feed.records));
 
   return (
     <Panel index={1}>
@@ -367,9 +370,7 @@ function StreakPanel({ profile }: { profile: Profile }) {
         </View>
       ) : null}
       <Text style={[TYPE.meta18, { color: INK.muted }]}>
-        {profile.has_voted
-          ? `Vote once every two weeks to keep it going. This period ends in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}.`
-          : 'Vote on any proposal to start your streak.'}
+        {hint}
       </Text>
     </Panel>
   );
@@ -454,6 +455,39 @@ function getRequirements(profile: Profile, rank: Profile['rank']): Array<Require
  */
 function getStreakPeriodDaysLeft(): number {
   return Math.max(1, Math.ceil((getCurrentPeriodEnd().getTime() - Date.now()) / DAY_MS));
+}
+
+/**
+ * What to do next for the streak. The server's streak count already skips
+ * periods with nothing to vote on; the latest vote tells whether this period
+ * is done or the streak has lapsed.
+ */
+function getStreakHint(profile: Profile, lastVoteAt: number | null): string {
+  if (!profile.has_voted) return 'Vote on any proposal to start your streak.';
+
+  const currentPeriod = getStreakPeriod(Date.now());
+  const lastVotePeriod = lastVoteAt === null ? null : getStreakPeriod(lastVoteAt);
+
+  if (lastVotePeriod === currentPeriod) {
+    // Last moment of the next period (its end is exclusive)
+    const nextDeadline = new Date(getStreakPeriodEnd(currentPeriod + 1) - 1).toISOString();
+    return `You've voted this period. Vote again by ${formatDayMonth(nextDeadline)} to keep it going.`;
+  }
+  if (profile.current_streak_weeks === 0 && lastVotePeriod !== null && lastVotePeriod < currentPeriod - 1) {
+    return 'Your streak ended. Vote on any proposal to start a new one.';
+  }
+
+  const daysLeft = getStreakPeriodDaysLeft();
+  return `Vote once every two weeks to keep it going. This period ends in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}.`;
+}
+
+/** When the latest vote that earned REP was cast; null when none is loaded */
+function getLastVoteAt(activities: Array<Activity>): number | null {
+  const times = activities
+    .filter((activity) => activity.event_type === 'VOTE' || activity.event_type === 'FIRST_VOTE')
+    .map((activity) => Date.parse(String(activity.metadata?.earned_at ?? activity.created_at)))
+    .filter((time) => !Number.isNaN(time));
+  return times.length > 0 ? Math.max(...times) : null;
 }
 
 function FlickerFlame() {

@@ -151,8 +151,6 @@ function TopFade({ height }: { height: number }) {
   );
 }
 
-type PullPhase = 'idle' | 'pulled' | 'fetching';
-
 /** How long a pull waits for its fetch to start before the spinner gives up */
 const PULL_START_TIMEOUT_MS = 1500;
 
@@ -167,3 +165,5 @@ const styles = StyleSheet.create({
     backgroundColor: THERMAL_COLORS.void,
   },
 });
+
+type PullPhase = 'idle' | 'pulled' | 'fetching';

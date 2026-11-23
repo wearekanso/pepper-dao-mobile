@@ -297,7 +297,7 @@ function SuccessBody({ result, points, isFirstVote, streakWeeks, showTx }: Succe
         <ResultBox
           label="STREAK"
           value={streakWeeks === 1 ? '1 WEEK' : `${streakWeeks} WEEKS`}
-          hint={`next by ${formatDayMonth(new Date(getStreakPeriodEnd(getStreakPeriod(result.date.getTime()) + 1)).toISOString())}`}
+          hint={`next by ${formatDayMonth(new Date(getStreakPeriodEnd(getStreakPeriod(result.date.getTime()) + 1) - 1).toISOString())}`}
         />
       </View>
 
@@ -417,8 +417,6 @@ const CONFIRM_STEPS = [
 const INK_KIND = 'rgba(255,255,255,0.5)';
 
 const EXPLORER_URL = 'https://chiliscan.com';
-
-/** A weekly streak survives if the next vote lands within 7 days */
 
 const OPTIONS: Array<{ value: CastOption; hint: string; color: string }> = [
   { value: 'YES', hint: 'Approve this proposal', color: VOTE_COLORS.YES },

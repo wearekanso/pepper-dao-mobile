@@ -255,7 +255,7 @@ export async function fetchTreasuryChzTxs(
         fetchExplorerTxs('txlist', address),
         fetchExplorerTxs('txlistinternal', address),
       ]);
-      const payouts = internalTxs.filter((tx) => tx.type === 'call' && tx.value !== '0');
+      const payouts = internalTxs.filter((tx) => tx.type?.toLowerCase() === 'call' && tx.value !== '0');
       return [...txs, ...payouts]
         .map((tx) => toTreasuryTx(tx, address, sinceSeconds))
         .filter((tx): tx is TreasuryChzTx => tx !== null);
