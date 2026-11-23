@@ -29,6 +29,7 @@ import { PixelArt } from '../components/pixel-art';
 import { PixelButton } from '../components/pixel-button';
 import { LiveVoteCard } from '../components/proposal-panels';
 import { ThermalScreen } from '../components/thermal-screen';
+import { StakeSheet } from '../components/stake-sheet';
 import { TreasurySheet } from '../components/treasury-sheet';
 import { TabHeader } from '../components/tab-header';
 import { WalletChip } from '../components/wallet-chip';
@@ -60,6 +61,7 @@ export function PulseScreen() {
   const updatedAgo = metrics ? formatMinutesAgo(metrics.updatedAt) : null;
   const { data: proposals, refetch: refetchProposals } = useGovernanceProposals({});
   const [modal, setModal] = useState<ModalKey | null>(null);
+  const [isStakeOpen, setIsStakeOpen] = useState(false);
 
   useEffect(() => {
     telemetry.trackPepperDashboardViewed();
@@ -127,6 +129,15 @@ export function PulseScreen() {
     void refetchProposals();
   }
 
+  // Open the lock sheet right here; without a wallet there is nothing to lock yet
+  function handleLockPepper() {
+    if (wallet.isConnected) {
+      setIsStakeOpen(true);
+      return;
+    }
+    void wallet.connect();
+  }
+
   async function handleGetPepper() {
     await openBrowserAsync(FANX_SWAP_URL, { presentationStyle: WebBrowserPresentationStyle.AUTOMATIC });
   }
@@ -177,7 +188,7 @@ export function PulseScreen() {
 
       <View style={[styles.row, { gap: 12 }]}>
         <PixelButton label="GET PEPPER" variant="gold" style={{ flex: 1 }} onPress={() => void handleGetPepper()} />
-        <PixelButton label="LOCK PEPPER" variant="outline" style={{ flex: 1 }} onPress={() => router.push('/power')} />
+        <PixelButton label="LOCK PEPPER" variant="outline" style={{ flex: 1 }} onPress={handleLockPepper} />
       </View>
 
       <View style={{ gap: 8 }}>
@@ -232,7 +243,9 @@ export function PulseScreen() {
                     </View>
                     {readout.modal ? <Chevron /> : null}
                   </View>
-                  <Text style={TYPE.display32} numberOfLines={1} adjustsFontSizeToFit>
+                  {/* Only half-width cards shrink to fit: on the full-width last
+                      card, iOS's fit drew "85.9K" as a tiny "…" */}
+                  <Text style={TYPE.display32} numberOfLines={1} adjustsFontSizeToFit={pair.length > 1}>
                     {readout.value}
                   </Text>
                   <Text style={[TYPE.meta18, { color: INK.muted }]} numberOfLines={1} adjustsFontSizeToFit>
@@ -286,6 +299,7 @@ export function PulseScreen() {
         message="PEPPER removed from circulation for good: the gap between the original 8.888Q supply and what exists today. Burned tokens never come back."
         address={PEPPER_TOKEN_ADDRESS}
       />
+      <StakeSheet visible={isStakeOpen} onClose={() => setIsStakeOpen(false)} />
       <InfoSheet
         visible={modal === 'staked'}
         onClose={() => setModal(null)}
@@ -331,6 +345,11 @@ function HeatShortcut({ index, onPress, demo = false }: HeatShortcutProps) {
   const profile = demoProfile ?? user.profile;
   const isConnected = demo || wallet.isConnected;
   const heat = profile && isConnected ? getHeatProgress(profile) : null;
+  // Connected but the profile is still loading (cold start): show a
+  // placeholder, not the "link a wallet" hint the user already acted on
+  const isProfileLoading = isConnected && !profile;
+  // Linked before: the wallet reward is already paid, so don't promise it again
+  const isReturning = !isConnected && !!profile?.wallet_verified_at;
   const streakWeeks = profile?.current_streak_weeks ?? 0;
 
   return (
@@ -340,11 +359,19 @@ function HeatShortcut({ index, onPress, demo = false }: HeatShortcutProps) {
         <View style={{ flex: 1 }}>
           <Text style={[TYPE.label12, { color: INK.muted }]}>YOUR HEAT</Text>
           <Text style={TYPE.meta18} numberOfLines={1}>
-            {heat ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU` : 'Start earning heat'}
+            {heat
+              ? `${heat.current.name} · ${formatInteger(heat.shu)} SHU`
+              : isProfileLoading
+                ? '–'
+                : isReturning
+                  ? 'Wallet disconnected'
+                  : 'Start earning heat'}
           </Text>
-          {heat ? null : (
+          {heat || isProfileLoading ? null : (
             <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]} numberOfLines={1}>
-              {`+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link a wallet`}
+              {isReturning
+                ? 'Reconnect to see your heat'
+                : `+${REPUTATION_POINTS.WALLET_CONNECTED} REP when you link a wallet`}
             </Text>
           )}
         </View>

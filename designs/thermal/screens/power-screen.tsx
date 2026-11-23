@@ -16,6 +16,7 @@ import { useUser } from '@/contexts/user-context';
 import { useWallet } from '@/contexts/wallet-context';
 import { useActivities } from '@/hooks/use-activities';
 import { RANK_IMAGES } from '@/lib/rank-images';
+import { getCurrentPeriodEnd } from '@/lib/streaks';
 import { getEventTitle, getNextStreakMilestone, RANK_REQUIREMENTS, REPUTATION_POINTS } from '@/lib/reputation';
 import type { Activity, Profile } from '@/types/user';
 
@@ -91,7 +92,7 @@ export function PowerScreen() {
               <HeatLog profile={profile} isDemo={isDemo} />
             </>
           ) : (
-            <GuestPanel onConnect={() => void connect()} />
+            <GuestPanel isReturning={!!profile.wallet_verified_at} onConnect={() => void connect()} />
           )}
         </>
       ) : null}
@@ -302,7 +303,18 @@ function ScaleCell({ color, delay }: { color: string; delay: number }) {
 }
 
 /** No wallet yet: what linking unlocks, and the first two REP sources */
-function GuestPanel({ onConnect }: { onConnect: () => void }) {
+function GuestPanel({ isReturning, onConnect }: { isReturning: boolean; onConnect: () => void }) {
+  // Already linked once: the wallet reward is paid, so only ask to reconnect
+  if (isReturning) {
+    return (
+      <Panel index={1}>
+        <Text style={[TYPE.label12, { color: INK.muted }]}>WALLET DISCONNECTED</Text>
+        <Text style={TYPE.body14}>Reconnect your wallet to see your streak, level and heat log.</Text>
+        <PixelButton label="RECONNECT WALLET >" variant="gold" onPress={onConnect} />
+      </Panel>
+    );
+  }
+
   return (
     <Panel index={1}>
       <Text style={[TYPE.label12, { color: INK.muted }]}>NO HEAT SIGNATURE YET</Text>
@@ -331,7 +343,7 @@ function GuestPanel({ onConnect }: { onConnect: () => void }) {
 function StreakPanel({ profile }: { profile: Profile }) {
   const weeks = profile.current_streak_weeks;
   const next = getNextStreakMilestone(weeks);
-  const daysLeft = getStreakDaysLeft(profile.last_activity_at);
+  const daysLeft = getStreakPeriodDaysLeft();
 
   return (
     <Panel index={1}>
@@ -355,9 +367,9 @@ function StreakPanel({ profile }: { profile: Profile }) {
         </View>
       ) : null}
       <Text style={[TYPE.meta18, { color: INK.muted }]}>
-        {weeks === 0 || daysLeft === null
-          ? 'Vote on any proposal to start your streak.'
-          : `Vote on any proposal within ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} to keep your streak.`}
+        {profile.has_voted
+          ? `Vote once every two weeks to keep it going. This period ends in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}.`
+          : 'Vote on any proposal to start your streak.'}
       </Text>
     </Panel>
   );
@@ -436,13 +448,12 @@ function getRequirements(profile: Profile, rank: Profile['rank']): Array<Require
   return items;
 }
 
-/** Whole days left in the 7-day window that keeps the weekly streak alive */
-function getStreakDaysLeft(lastActivityAt: string | null): number | null {
-  if (!lastActivityAt) return null;
-  const last = Date.parse(lastActivityAt);
-  if (!Number.isFinite(last)) return null;
-  const left = Math.ceil((last + STREAK_WINDOW_MS - Date.now()) / DAY_MS);
-  return left > 0 ? left : null;
+/**
+ * Whole days left in the current two-week streak period. A vote in every
+ * period with an open proposal keeps the streak (reputation-rules.ts).
+ */
+function getStreakPeriodDaysLeft(): number {
+  return Math.max(1, Math.ceil((getCurrentPeriodEnd().getTime() - Date.now()) / DAY_MS));
 }
 
 function FlickerFlame() {
@@ -580,7 +591,6 @@ const GUEST_STEPS = [
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const STREAK_WINDOW_MS = 7 * DAY_MS;
 
 const STAGE_HEIGHT = 508;
 const ART_SIZE = 110;

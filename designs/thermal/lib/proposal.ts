@@ -56,10 +56,16 @@ export const STATUS_TAGS: Record<GovernanceStatus, { label: string; kind: Status
   REJECTED: { label: 'REJECTED', kind: 'negative' },
 };
 
-/** Who votes + its number: "COMMUNITY VOTE · #1", "COUNCIL · #2", "COUNCIL · MULTISIG" */
+/**
+ * Who votes + its number: "COMMUNITY VOTE · #1", "COUNCIL · #2", "COUNCIL · MULTISIG".
+ * A community vote without a number (the demo proposal, PAT-DEMO) is just
+ * "COMMUNITY VOTE": its type "PEP" means nothing to a reader.
+ */
 export function getProposalLabel(proposal: GovernanceProposal): string {
   const index = /^[A-Z]+-(\d{1,6})$/.exec(proposal.key)?.[1];
-  return `${PROPOSAL_KIND[proposal.type]} · ${index !== undefined ? `#${index}` : proposal.type}`;
+  const kind = PROPOSAL_KIND[proposal.type];
+  if (index !== undefined) return `${kind} · #${index}`;
+  return proposal.type === 'PEP' ? kind : `${kind} · ${proposal.type}`;
 }
 
 /** The connected wallet's recorded vote, if any */
@@ -179,6 +185,10 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
     else if (proposal.status === 'ACTIVE') communityState = 'live';
   }
 
+  // A signalling proposal (no on-chain actions, e.g. a ratification) has
+  // nothing to execute, so it ends at the vote instead of waiting forever
+  const hasExecutionStage = proposal.actions.length > 0 || isExecuted;
+
   return [
     ...(hasMinistersStage ? [ministers] : []),
     {
@@ -188,7 +198,9 @@ export function getProposalStages(proposal: GovernanceProposal): Array<ProposalS
       detail: communityState === 'live' ? 'LIVE' : communityState === 'done' ? 'PASSED' : communityState === 'failed' ? 'FAILED' : '',
       state: communityState,
     },
-    { label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', sentence: EXECUTION_SENTENCE[String(isExecuted)], detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' },
+    ...(hasExecutionStage
+      ? [{ label: 'EXECUTION ON-CHAIN', short: 'EXECUTE', sentence: EXECUTION_SENTENCE[String(isExecuted)], detail: isExecuted ? 'DONE' : '', state: isExecuted ? 'done' : 'waiting' } satisfies ProposalStage]
+      : []),
   ];
 }
 

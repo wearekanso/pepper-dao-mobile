@@ -95,7 +95,8 @@ export function TreasurySheet({ visible, onClose, address }: TreasurySheetProps)
             </View>
           ) : (
             list.map((tx, index) => (
-              <View key={tx.hash}>
+              // One execute() can pay out several times in the same transaction
+              <View key={`${tx.hash}-${index}`}>
                 <TxRow tx={tx} copied={copied} onCopy={(value) => void handleCopy(value)} />
                 {index < list.length - 1 ? <DashedDivider /> : null}
               </View>

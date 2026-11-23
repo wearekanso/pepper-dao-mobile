@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -144,7 +145,7 @@ export function ProposalDetailScreen() {
           <View style={{ gap: 12 }}>
             <Text style={TYPE.display32}>{getProposalTitle(proposal)}</Text>
             <View style={[styles.row, { gap: 6, flexWrap: 'wrap' }]}>
-              <Touchable onPress={() => void Linking.openURL(`${EXPLORER_URL}/address/${proposal.proposer}`)}>
+              <Touchable onPress={() => openInApp(`${EXPLORER_URL}/address/${proposal.proposer}`)}>
                 <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>
                   {isCouncil ? 'by Council multisig' : `by ${shortenAddress(proposal.proposer)}`}
                 </Text>
@@ -179,7 +180,7 @@ export function ProposalDetailScreen() {
                     key={`${action.to}-${index}`}
                     index={5 + index}
                     gap={4}
-                    onPress={() => void Linking.openURL(`${EXPLORER_URL}/address/${action.to}`)}
+                    onPress={() => openInApp(`${EXPLORER_URL}/address/${action.to}`)}
                   >
                     <View style={styles.between}>
                       <Text style={[TYPE.meta18, { flexShrink: 1 }]} numberOfLines={1}>
@@ -374,7 +375,19 @@ function Summary({ text }: { text: string }) {
     <View style={{ gap: 10 }}>
       <SectionLabel label="SUMMARY" />
       <Text style={TYPE.body14} numberOfLines={isLong && !isExpanded ? 4 : undefined}>
-        {text}
+        {splitLinks(text).map((part, index) =>
+          part.isLink ? (
+            <Text
+              key={index}
+              style={{ color: THERMAL_COLORS.gold, textDecorationLine: 'underline' }}
+              onPress={() => openInApp(part.text)}
+            >
+              {part.text}
+            </Text>
+          ) : (
+            part.text
+          ),
+        )}
       </Text>
       {isLong ? (
         <ChevronLink label={isExpanded ? 'SHOW LESS' : 'READ MORE'} onPress={() => setIsExpanded((value) => !value)} />
@@ -399,7 +412,10 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
   const isOpen = proposal.status === 'ACTIVE';
   const height = DOCK_HEIGHT + insets.bottom;
 
-  // Figma: "You voted YES · tap to change  TX >" — a vote can be changed while voting is open
+  // No PEPPER track allows vote replacement (Standard/Agile: Standard mode,
+  // Fast: EarlyExecution), so a recorded vote is final: a second vote would
+  // revert and only cost gas. The demo proposal can still be re-picked.
+  const isVoteFinal = Boolean(selected) && !isDemoProposalId(proposal.id);
   const footer = freshTx && isDemoProposalId(proposal.id)
     ? `You voted ${selected} · test, not on-chain`
     : proposal.status === 'PENDING'
@@ -407,7 +423,7 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
       : !isOpen
         ? 'Voting is closed for this proposal'
         : selected
-          ? `You voted ${selected} · tap to change`
+          ? `You voted ${selected} · votes are final`
           : 'Your vePEPPER sets the temperature';
   const showTx = Boolean(freshTx) && !isDemoProposalId(proposal.id);
 
@@ -441,10 +457,13 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
               <PixelButton
                 key={option}
                 label={option}
-                disabled={!isOpen}
+                // After a final vote the picked option stays bright, the others dim
+                disabled={!isOpen || (isVoteFinal && !isSelected)}
                 variant={isSelected ? 'cream' : selected ? 'muted' : 'outline'}
                 style={{ flex: 1 }}
-                onPress={() => onSelect(option)}
+                onPress={() => {
+                  if (!isVoteFinal) onSelect(option);
+                }}
               />
             );
           })}
@@ -454,13 +473,37 @@ function VoteDock({ proposal, selected, freshTx, onSelect }: VoteDockProps) {
             {footer}
           </Text>
           {showTx ? (
-            <ChevronLink label="TX" onPress={() => void Linking.openURL(`${EXPLORER_URL}/tx/${freshTx}`)} />
+            <ChevronLink label="TX" onPress={() => openInApp(`${EXPLORER_URL}/tx/${freshTx}`)} />
           ) : null}
         </View>
       </View>
       )}
     </Animated.View>
   );
+}
+
+/** Explorer pages and summary links open in the in-app browser, so the user stays in the app */
+function openInApp(url: string) {
+  void openBrowserAsync(url, { presentationStyle: WebBrowserPresentationStyle.AUTOMATIC });
+}
+
+/**
+ * Proposal text with its https links split out so they can be tapped.
+ * Anyone can write a proposal, so only https opens (in the in-app browser);
+ * trailing punctuation stays text: "…/tx/0xab." links "…/tx/0xab".
+ */
+function splitLinks(text: string): Array<TextPart> {
+  const parts: Array<TextPart> = [];
+  let last = 0;
+  for (const match of text.matchAll(LINK_PATTERN)) {
+    const url = match[0].replace(TRAILING_PUNCTUATION, '');
+    const start = match.index ?? 0;
+    if (start > last) parts.push({ text: text.slice(last, start), isLink: false });
+    parts.push({ text: url, isLink: true });
+    last = start + url.length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), isLink: false });
+  return parts;
 }
 
 function getTimingLabel(proposal: GovernanceProposal): string {
@@ -556,6 +599,11 @@ function CouncilPanel({ proposal }: { proposal: GovernanceProposal }) {
   );
 }
 
+interface TextPart {
+  text: string;
+  isLink: boolean;
+}
+
 interface FreshVote {
   option: Exclude<VoteOption, 'NONE'>;
   txHash: string;
@@ -581,6 +629,8 @@ const DOCK_HEIGHT = 128;
 /** Dock buttons start 36pt down; the fade above them is the only see-through part */
 const DOCK_BUTTONS_TOP = 36;
 const EXPLORER_URL = 'https://chiliscan.com';
+const LINK_PATTERN = /https:\/\/[^\s<>"')\]]+/g;
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 const styles = StyleSheet.create({
   row: {

@@ -110,9 +110,7 @@ function ActionRow({ action }: { action: EarnAction }) {
         <View style={styles.nextTag}>
           <Text style={[TYPE.label12, { color: THERMAL_COLORS.void }]}>NEXT</Text>
         </View>
-      ) : (
-        <Text style={[TYPE.label12, { color: THERMAL_COLORS.gold }]}>{'>'}</Text>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -150,7 +148,7 @@ function getActions(profile: Profile): Array<EarnAction> {
   const list: Array<Omit<EarnAction, 'state'> & { done: boolean }> = [
     { title: 'LINK WALLET', hint: 'One-time · unlocks MEMBER', points: `+${REPUTATION_POINTS.WALLET_CONNECTED}`, done: Boolean(profile.wallet_address) },
     { title: 'FIRST VOTE', hint: `Then +${REPUTATION_POINTS.VOTE} for every vote after`, points: `+${REPUTATION_POINTS.FIRST_VOTE}`, done: profile.has_voted },
-    { title: 'PROPOSAL HEATS UP', hint: 'Your proposal gets engagement', points: `+${REPUTATION_POINTS.PROPOSAL_ENGAGED}`, done: profile.has_engaged_proposal },
+    { title: 'PROPOSAL HEATS UP', hint: 'Your proposal reaches its turnout', points: `+${REPUTATION_POINTS.PROPOSAL_ENGAGED}`, done: profile.has_engaged_proposal },
     { title: 'PROPOSAL PASSES', hint: 'Community votes it through', points: `+${REPUTATION_POINTS.PROPOSAL_PASSED}`, done: profile.has_passed_proposal },
     { title: 'PROPOSAL EXECUTES', hint: 'Shipped on-chain', points: `+${REPUTATION_POINTS.PROPOSAL_EXECUTED}`, done: false },
   ];

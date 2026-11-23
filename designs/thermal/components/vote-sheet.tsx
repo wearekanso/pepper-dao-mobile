@@ -9,6 +9,7 @@ import { useUser } from '@/contexts/user-context';
 import { useWallet } from '@/contexts/wallet-context';
 import { useVoting } from '@/hooks/use-voting';
 import { REPUTATION_POINTS } from '@/lib/reputation';
+import { getStreakPeriod, getStreakPeriodEnd } from '@/supabase/functions/_shared/reputation-rules';
 import { fetchNativeBalance } from '@/services/chiliz-api';
 import type { GovernanceProposal, VoteOption } from '@/types/governance';
 
@@ -296,12 +297,14 @@ function SuccessBody({ result, points, isFirstVote, streakWeeks, showTx }: Succe
         <ResultBox
           label="STREAK"
           value={streakWeeks === 1 ? '1 WEEK' : `${streakWeeks} WEEKS`}
-          hint={`next by ${formatDayMonth(new Date(result.date.getTime() + STREAK_WINDOW_MS).toISOString())}`}
+          hint={`next by ${formatDayMonth(new Date(getStreakPeriodEnd(getStreakPeriod(result.date.getTime()) + 1)).toISOString())}`}
         />
       </View>
 
       <View style={styles.between}>
-        <Text style={[TYPE.meta18, { color: INK.muted, flexShrink: 1 }]}>You can change your vote until it ends.</Text>
+        {/* No PEPPER track allows vote replacement, so the vote cannot be changed.
+            REP is paid by sync-proposals once it has indexed the vote (~2 min) */}
+        <Text style={[TYPE.meta18, { color: INK.muted, flexShrink: 1 }]}>Your vote is final. REP lands in a few minutes.</Text>
         {showTx ? (
           <ChevronLink
             label="TX"
@@ -416,7 +419,6 @@ const INK_KIND = 'rgba(255,255,255,0.5)';
 const EXPLORER_URL = 'https://chiliscan.com';
 
 /** A weekly streak survives if the next vote lands within 7 days */
-const STREAK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const OPTIONS: Array<{ value: CastOption; hint: string; color: string }> = [
   { value: 'YES', hint: 'Approve this proposal', color: VOTE_COLORS.YES },
