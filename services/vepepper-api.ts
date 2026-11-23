@@ -13,6 +13,7 @@ import { createPublicClient, erc20Abi, http, zeroAddress, type Address } from 'v
 import { VEPEPPER_CONTRACTS } from '@/config/aragon-governance';
 import { chiliz } from '@/config/chains';
 import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
+import { isUserRejection } from '@/services/wallet-link-api';
 import {
   VEPEPPER_CLOCK_ABI,
   VEPEPPER_CURVE_ABI,
@@ -299,7 +300,9 @@ async function sendTransaction(
     const receipt = await tx.wait();
     return { status: 'success', txHash: receipt?.hash ?? tx.hash };
   } catch (error) {
-    console.error(`[VePepperAPI] ${label} failed:`, error);
+    // Declining in the wallet is the user's choice, not an app error
+    if (isUserRejection(error)) console.warn(`[VePepperAPI] ${label} declined in the wallet`);
+    else console.error(`[VePepperAPI] ${label} failed:`, error);
     return { status: 'error', error: parseVePepperError(error) };
   }
 }
@@ -320,6 +323,9 @@ function findRevertData(error: unknown, depth = 0): string | null {
   return null;
 }
 
+/** Shown when the user declines a transaction in the wallet */
+export const TX_CANCELLED_MESSAGE = 'Transaction was cancelled';
+
 /** 4-byte selector of each escrow custom error → message */
 const ERROR_MESSAGES_BY_SELECTOR: Record<string, string> = Object.fromEntries(
   Object.entries(VEPEPPER_ESCROW_ERRORS).map(([signature, message]) => [id(signature).slice(0, 10), message]),
@@ -327,9 +333,9 @@ const ERROR_MESSAGES_BY_SELECTOR: Record<string, string> = Object.fromEntries(
 
 /** Lower-case substring of the error message → message */
 const TEXT_ERROR_MESSAGES: Record<string, string> = {
-  'user rejected': 'Transaction was cancelled',
-  'user denied': 'Transaction was cancelled',
-  action_rejected: 'Transaction was cancelled',
+  'user rejected': TX_CANCELLED_MESSAGE,
+  'user denied': TX_CANCELLED_MESSAGE,
+  action_rejected: TX_CANCELLED_MESSAGE,
   // PEPPER is an OpenZeppelin v4 ERC-20: plain "ERC20: ..." reasons
   'insufficient allowance': 'Approve PEPPER first, then lock',
   'transfer amount exceeds balance': 'Not enough PEPPER in your wallet',
