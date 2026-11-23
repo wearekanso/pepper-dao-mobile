@@ -3,6 +3,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import { hasSharedSecret, isServiceRequest } from '../_shared/auth.ts';
 import { json, preflight } from '../_shared/http.ts';
+import { syncVotesAndRewards } from './votes.ts';
 import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38.6';
 
 /**
@@ -10,7 +11,8 @@ import { createPublicClient, getAbiItem, http, hexToString } from 'npm:viem@2.38
  *
  * Indexes ProposalCreated events from the PEPPER MainDao track plugins
  * (one Aragon TokenVoting 1.4 plugin per voting track) and stores them in
- * Supabase for fast retrieval.
+ * Supabase for fast retrieval. Then indexes VoteCast events and pays vote,
+ * streak and proposal rewards (votes.ts).
  *
  * DAO: 0x26Ed279F6d9F1bb016f16e75704E6bBCc1F99213 (chiliz-mainnet)
  *
@@ -220,6 +222,8 @@ const MAX_BLOCKS_PER_CALL = BigInt(100_000);
 const LOG_SCAN_BUDGET_MS = 60_000;
 const PROCESS_BUDGET_MS = 100_000;
 const REFRESH_BUDGET_MS = 120_000;
+// Vote index and rewards run last; no new request starts after this
+const VOTES_BUDGET_MS = 140_000;
 
 // A lock older than this belongs to a run that was killed: take it over.
 // The platform kills a run at 150s, so anything past ~3 min is certainly dead.
@@ -746,6 +750,16 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Votes and rewards (votes.ts): own cursor, never fails the proposal sync
+    const votes = await syncVotesAndRewards({
+      supabase,
+      chain: chiliz,
+      plugins: TRACK_PLUGIN_ADDRESSES,
+      firstBlock: FIRST_INDEXED_BLOCK,
+      safeBlock,
+      deadline: runStartedAt + VOTES_BUDGET_MS,
+    });
+
     // Update sync state with where we actually got to. If a proposal failed,
     // stop just before its block: the next run starts there again (proposals
     // already stored in that block are skipped by the "already exists" check).
@@ -782,6 +796,7 @@ Deno.serve(async (req: Request) => {
         metadataFixed: metadataFixedCount,
         retryProposalId: failedProposal?.proposalId ?? null,
         needsMoreSync,
+        votes,
         latestBlock: Number(latestBlock),
         blocksRemaining: Number(safeBlock > syncedToBlock ? safeBlock - syncedToBlock : BigInt(0)),
       }),

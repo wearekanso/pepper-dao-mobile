@@ -22,7 +22,6 @@ const REPUTATION_INFO = [
   { event: 'Proposal Engaged', points: REPUTATION_POINTS.PROPOSAL_ENGAGED, icon: '📜' },
   { event: 'Proposal Passed', points: REPUTATION_POINTS.PROPOSAL_PASSED, icon: '📜' },
   { event: 'Proposal Executed', points: REPUTATION_POINTS.PROPOSAL_EXECUTED, icon: '📜' },
-  { event: 'Receive Delegation', points: REPUTATION_POINTS.DELEGATION_RECEIVED, icon: '🤝' },
 ];
 
 /**

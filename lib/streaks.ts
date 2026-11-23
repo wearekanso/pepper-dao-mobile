@@ -4,34 +4,33 @@
  * Logic for calculating and managing governance streaks.
  */
 
+import {
+  getStreakPeriod,
+  getStreakPeriodEnd,
+  getStreakPeriodStart,
+  STREAK_PERIOD_MS,
+} from '@/supabase/functions/_shared/reputation-rules';
 import type { Profile, Streak, StreakDisplay } from '@/types/user';
 
 import { getNextStreakMilestone, getStreakMilestonePoints } from './reputation';
 
 /**
- * Bi-weekly period in milliseconds (14 days)
+ * Bi-weekly streak period in milliseconds (14 days; shared with the server)
  */
-export const BI_WEEKLY_PERIOD_MS = 14 * 24 * 60 * 60 * 1000;
+export const BI_WEEKLY_PERIOD_MS = STREAK_PERIOD_MS;
 
 /**
  * Get current bi-weekly period start date
  */
 export function getCurrentPeriodStart(): Date {
-  const now = new Date();
-  // Start periods from a fixed point (e.g., Unix epoch week)
-  const epochStart = new Date('2024-01-01T00:00:00Z');
-  const msSinceEpoch = now.getTime() - epochStart.getTime();
-  const periodsSinceEpoch = Math.floor(msSinceEpoch / BI_WEEKLY_PERIOD_MS);
-  const currentPeriodStart = new Date(epochStart.getTime() + periodsSinceEpoch * BI_WEEKLY_PERIOD_MS);
-  return currentPeriodStart;
+  return new Date(getStreakPeriodStart(getStreakPeriod(Date.now())));
 }
 
 /**
  * Get current bi-weekly period end date
  */
 export function getCurrentPeriodEnd(): Date {
-  const start = getCurrentPeriodStart();
-  return new Date(start.getTime() + BI_WEEKLY_PERIOD_MS);
+  return new Date(getStreakPeriodEnd(getStreakPeriod(Date.now())));
 }
 
 /**
