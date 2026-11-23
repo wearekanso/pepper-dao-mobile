@@ -13,38 +13,70 @@ import {
   type RuleRank,
 } from './reputation-rules.ts';
 
+/** sync_state row of the proposal index (sync-proposals' own cursor) */
+export const PROPOSALS_SYNC_STATE_ID = 'main_dao';
 /** sync_state row of the VoteCast index */
 export const VOTES_SYNC_STATE_ID = 'main_dao_votes';
 /** sync_state row of the hourly re-check of every verified wallet */
 export const REWARDS_SYNC_STATE_ID = 'rewards';
 
 /**
- * Rewards are only paid once the vote index has reached the chain head (give
- * or take this many blocks, ~1.5 h). Before that a wallet's earliest vote may
- * still be missing, and its first vote and streaks would come out wrong.
+ * Rewards are only paid once both indexes have reached the chain head (give
+ * or take this many blocks, ~1.5 h):
+ * - votes: before that a wallet's earliest vote may be missing, so its first
+ *   vote and streaks would come out wrong
+ * - proposals: a missing proposal hides a period in which a vote was
+ *   possible, so a streak would run through a gap it should break at, pay
+ *   its milestones early, and pay them again once the proposal shows up
+ *   (the streak then splits and its milestone keys change)
+ * A proposal created within the lag can only open the period in progress,
+ * which never breaks a streak.
  */
 const MAX_INDEX_LAG_BLOCKS = 2_000;
 
-/** True when the vote index is close enough to `headBlock` to pay rewards */
-export async function isVoteIndexCurrent(supabase: SupabaseLike, headBlock: bigint): Promise<boolean> {
+/** True when the vote and proposal indexes are close enough to `headBlock` to pay rewards */
+export async function isRewardDataCurrent(supabase: SupabaseLike, headBlock: bigint): Promise<boolean> {
   const { data, error } = await supabase
     .from('sync_state')
-    .select('last_synced_block')
-    .eq('id', VOTES_SYNC_STATE_ID)
-    .maybeSingle();
-  if (error || !data) return false;
-  return BigInt(data.last_synced_block) + BigInt(MAX_INDEX_LAG_BLOCKS) >= headBlock;
+    .select('id, last_synced_block')
+    .in('id', [VOTES_SYNC_STATE_ID, PROPOSALS_SYNC_STATE_ID]);
+  if (error || !data || data.length < 2) return false;
+  return data.every(
+    (row: { last_synced_block: number | string }) =>
+      BigInt(row.last_synced_block) + BigInt(MAX_INDEX_LAG_BLOCKS) >= headBlock,
+  );
 }
+
+/**
+ * Every row a query returns, page by page: PostgREST caps one response (1,000
+ * rows by default), so a single select would cut off the rest silently.
+ * `build` makes a fresh, ordered query for each page.
+ */
+export async function selectAll<T>(build: () => SupabaseLike): Promise<Array<T>> {
+  const rows: Array<T> = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as Array<T>));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
+/** Rows per page in selectAll; at most the PostgREST cap */
+const PAGE_SIZE = 1_000;
 
 /** Every proposal, in the shape the reward engine reads */
 export async function loadRewardProposals(supabase: SupabaseLike): Promise<Array<RewardProposal>> {
-  const { data, error } = await supabase
-    .from('proposals')
-    .select(
-      'proposal_id, plugin_address, display_index, creator, status, start_date, end_date, executed_at, tally_yes, tally_no, tally_abstain, total_voting_power, min_participation',
-    );
-  if (error) throw error;
-  return (data ?? []).map((row: ProposalRow) => ({
+  const rows = await selectAll<ProposalRow>(() =>
+    supabase
+      .from('proposals')
+      .select(
+        'proposal_id, plugin_address, display_index, creator, status, start_date, end_date, executed_at, tally_yes, tally_no, tally_abstain, total_voting_power, min_participation',
+      )
+      .order('plugin_address')
+      .order('proposal_id'),
+  );
+  return rows.map((row) => ({
     pluginAddress: row.plugin_address,
     proposalId: row.proposal_id,
     displayIndex: row.display_index === null ? null : String(row.display_index),
@@ -84,13 +116,16 @@ export async function refreshWalletRewards(
   if (profileError) throw profileError;
   if (!profile) return null;
 
-  const { data: voteRows, error: votesError } = await supabase
-    .from('chain_votes')
-    .select('plugin_address, proposal_id, voter, voted_at')
-    .eq('voter', wallet);
-  if (votesError) throw votesError;
+  const voteRows = await selectAll<VoteRow>(() =>
+    supabase
+      .from('chain_votes')
+      .select('plugin_address, proposal_id, voter, voted_at')
+      .eq('voter', wallet)
+      .order('plugin_address')
+      .order('proposal_id'),
+  );
 
-  const votes: Array<RewardVote> = (voteRows ?? []).map((row: VoteRow) => ({
+  const votes: Array<RewardVote> = voteRows.map((row) => ({
     pluginAddress: row.plugin_address,
     proposalId: row.proposal_id,
     voter: row.voter,

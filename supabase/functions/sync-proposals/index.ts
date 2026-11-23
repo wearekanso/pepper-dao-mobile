@@ -750,16 +750,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Votes and rewards (votes.ts): own cursor, never fails the proposal sync
-    const votes = await syncVotesAndRewards({
-      supabase,
-      chain: chiliz,
-      plugins: TRACK_PLUGIN_ADDRESSES,
-      firstBlock: FIRST_INDEXED_BLOCK,
-      safeBlock,
-      deadline: runStartedAt + VOTES_BUDGET_MS,
-    });
-
     // Update sync state with where we actually got to. If a proposal failed,
     // stop just before its block: the next run starts there again (proposals
     // already stored in that block are skipped by the "already exists" check).
@@ -786,6 +776,19 @@ Deno.serve(async (req: Request) => {
     if (syncStateError) {
       throw syncStateError;
     }
+
+    // Votes and rewards (votes.ts) run last, after the proposal progress is
+    // saved and the lock released: if this step is cut off by the platform's
+    // time limit, only its own work is lost. It has its own cursor and never
+    // fails the proposal sync.
+    const votes = await syncVotesAndRewards({
+      supabase,
+      chain: chiliz,
+      plugins: TRACK_PLUGIN_ADDRESSES,
+      firstBlock: FIRST_INDEXED_BLOCK,
+      safeBlock,
+      deadline: runStartedAt + VOTES_BUDGET_MS,
+    });
 
     return new Response(
       JSON.stringify({

@@ -1,10 +1,11 @@
 import { createPublicClient, http, parseAbiItem, type Chain } from 'npm:viem@2.38.6';
 
 import {
-  isVoteIndexCurrent,
+  isRewardDataCurrent,
   loadRewardProposals,
   refreshWalletRewards,
   REWARDS_SYNC_STATE_ID,
+  selectAll,
   type SupabaseLike,
   VOTES_SYNC_STATE_ID,
 } from '../_shared/award.ts';
@@ -18,9 +19,11 @@ import {
  *    first block. Ankr's public RPC only allows 1,000 blocks per getLogs, so
  *    logs come from CHILIZ_LOGS_RPC_URL (default rpc.chiliz.com, which takes
  *    100,000-block ranges: the whole history is a few requests).
- * 2. Rewards: once the index is current, the voters seen in this run are
- *    paid at once; every hour all verified wallets are re-checked too, which
- *    catches streaks that ended and proposals that passed.
+ * 2. Rewards: once the vote and proposal indexes are current, the voters
+ *    seen in this run are paid at once; every hour all verified wallets are
+ *    re-checked too, which catches streaks that ended and proposals that
+ *    passed. The hourly list is shuffled, so a run cut short by its time
+ *    budget doesn't always leave the same wallets for last.
  *
  * Never throws: a failure is logged and returned, the proposal sync result
  * stands.
@@ -67,14 +70,17 @@ export async function syncVotesAndRewards(options: VoteSyncOptions): Promise<Vot
         strict: true,
       });
 
+      // Block times for the votes, read in parallel (VoteCast has no timestamp)
+      const missingBlocks = [...new Set(logs.map((log) => log.blockNumber))].filter((block) => !blockTimes.has(block));
+      for (let i = 0; i < missingBlocks.length; i += BLOCK_FETCH_CONCURRENCY) {
+        const batch = missingBlocks.slice(i, i + BLOCK_FETCH_CONCURRENCY);
+        const blocks = await Promise.all(batch.map((blockNumber) => logsClient.getBlock({ blockNumber })));
+        blocks.forEach((block, index) => blockTimes.set(batch[index], new Date(Number(block.timestamp) * 1000).toISOString()));
+      }
+
       const rows = [];
       for (const log of logs) {
-        let votedAt = blockTimes.get(log.blockNumber);
-        if (!votedAt) {
-          const block = await logsClient.getBlock({ blockNumber: log.blockNumber });
-          votedAt = new Date(Number(block.timestamp) * 1000).toISOString();
-          blockTimes.set(log.blockNumber, votedAt);
-        }
+        const votedAt = blockTimes.get(log.blockNumber)!;
         const voter = log.args.voter.toLowerCase();
         voters.add(voter);
         rows.push({
@@ -106,11 +112,9 @@ export async function syncVotesAndRewards(options: VoteSyncOptions): Promise<Vot
     }
     result.indexedToBlock = Number(cursor);
 
-    // 2. Rewards, only from a current index
-    result.indexCurrent = await isVoteIndexCurrent(supabase, safeBlock);
+    // 2. Rewards, only from current vote and proposal indexes
+    result.indexCurrent = await isRewardDataCurrent(supabase, safeBlock);
     if (!result.indexCurrent) return result;
-
-    const wallets = new Set(voters);
 
     const { data: rewardsState } = await supabase
       .from('sync_state')
@@ -120,22 +124,29 @@ export async function syncVotesAndRewards(options: VoteSyncOptions): Promise<Vot
     const lastFullRefresh = rewardsState?.last_sync_at ? Date.parse(rewardsState.last_sync_at) : 0;
     result.fullRefresh = Date.now() - lastFullRefresh >= FULL_REFRESH_INTERVAL_MS;
 
+    // This run's voters first, then (hourly) every verified wallet in random order
+    const wallets = new Set(voters);
     if (result.fullRefresh) {
-      const { data: profiles, error } = await supabase
-        .from('profiles')
-        .select('wallet_address')
-        .not('wallet_address', 'is', null)
-        .not('wallet_verified_at', 'is', null);
-      if (error) throw error;
-      for (const profile of profiles ?? []) wallets.add(String(profile.wallet_address).toLowerCase());
+      const profiles = await selectAll<{ wallet_address: string }>(() =>
+        supabase
+          .from('profiles')
+          .select('wallet_address')
+          .not('wallet_address', 'is', null)
+          .not('wallet_verified_at', 'is', null)
+          .order('id'),
+      );
+      for (const wallet of shuffle(profiles.map((profile) => String(profile.wallet_address).toLowerCase()))) {
+        wallets.add(wallet);
+      }
     }
     if (wallets.size === 0) return result;
 
     const proposals = await loadRewardProposals(supabase);
     let failures = 0;
+    let finished = true;
     for (const wallet of wallets) {
       if (Date.now() >= deadline) {
-        result.fullRefresh = false; // Not finished: the next run tries again
+        finished = false;
         break;
       }
       try {
@@ -148,13 +159,17 @@ export async function syncVotesAndRewards(options: VoteSyncOptions): Promise<Vot
     }
 
     if (failures > 0) {
-      result.error = `Rewards failed for ${failures} wallet(s); retried on the next run`;
-      result.fullRefresh = false;
+      result.error = `Rewards failed for ${failures} wallet(s); retried on the next hourly check`;
     }
-    if (result.fullRefresh) {
+    // A wallet that keeps failing must not restart the full check every run:
+    // the hour is marked done once every wallet was tried. A run that ran out
+    // of time is not done; the next one tries again in a new random order.
+    if (result.fullRefresh && finished) {
       await supabase
         .from('sync_state')
         .upsert({ id: REWARDS_SYNC_STATE_ID, last_synced_block: 0, last_sync_at: new Date().toISOString() });
+    } else {
+      result.fullRefresh = false;
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : JSON.stringify(error);
@@ -168,12 +183,25 @@ export async function syncVotesAndRewards(options: VoteSyncOptions): Promise<Vot
   return result;
 }
 
+/** A shuffled copy (Fisher-Yates) */
+function shuffle<T>(items: Array<T>): Array<T> {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 const VOTE_CAST_EVENT = parseAbiItem(
   'event VoteCast(uint256 indexed proposalId, address indexed voter, uint8 voteOption, uint256 votingPower)',
 );
 
 /** Blocks per getLogs on the logs RPC (rpc.chiliz.com accepts up to 250,000) */
 const VOTE_CHUNK_BLOCKS = BigInt(100_000);
+
+/** Block headers read at once while indexing a chunk of votes */
+const BLOCK_FETCH_CONCURRENCY = 10;
 
 /** How often every verified wallet is re-checked */
 const FULL_REFRESH_INTERVAL_MS = 60 * 60_000;

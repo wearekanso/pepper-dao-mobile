@@ -4,7 +4,7 @@ import { createPublicClient, getAddress, http, isAddress } from 'npm:viem@2.38.6
 import { chiliz } from 'npm:viem@2.38.6/chains';
 
 import { bearerToken } from '../_shared/auth.ts';
-import { isVoteIndexCurrent, promoteIfEligible, refreshWalletRewards, type RewardProfile, type SupabaseLike } from '../_shared/award.ts';
+import { isRewardDataCurrent, promoteIfEligible, refreshWalletRewards, type RewardProfile, type SupabaseLike } from '../_shared/award.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { RANK_ORDER, REPUTATION_POINTS } from '../_shared/reputation-rules.ts';
 
@@ -160,7 +160,7 @@ async function payEarnedRewards(
 ): Promise<RewardProfile> {
   try {
     const headBlock = await chilizClient.getBlockNumber();
-    if (await isVoteIndexCurrent(supabase, headBlock)) {
+    if (await isRewardDataCurrent(supabase, headBlock)) {
       const paid = await refreshWalletRewards(supabase, address);
       if (paid) return paid as RewardProfile;
     }
