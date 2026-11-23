@@ -11,6 +11,9 @@ import { parseAbi } from 'viem';
  * - Votes only count delegated locks. A new lock is delegated automatically
  *   when the owner already has a delegatee; otherwise the owner calls
  *   adapter.delegate(self) once. It works with no locks, so it goes first.
+ * - createLock dates the lock from clock.epochPrevCheckpointTs() (the last
+ *   weekly checkpoint), so a new lock already has a few days of age and its
+ *   voting power is curve.getBias(epochPrevCheckpointElapsed(), amount).
  * - beginWithdrawal moves the NFT into the escrow (the NFT must be approved
  *   to the escrow) and queues it. Withdraw is possible right away; the fee
  *   starts at the queue's feePercent and falls to 0 over its cooldown.
@@ -36,7 +39,7 @@ export const VEPEPPER_LOCK_NFT_ABI_HUMAN = [
 
 export const VEPEPPER_EXIT_QUEUE_ABI_HUMAN = [
   'function ticketHolder(uint256 _tokenId) view returns (address)',
-  'function queue(uint256 _tokenId) view returns ((address holder, uint48 queuedAt, uint16 feePercent, uint16 minFeePercent, uint48 cooldown, uint48 minCooldown, uint256 slope))',
+  'function queue(uint256 _tokenId) view returns ((address holder, uint48 queuedAt, uint48 minCooldown, uint48 cooldown, uint16 feePercent, uint16 minFeePercent, uint256 slope))',
   'function calculateFee(uint256 _tokenId) view returns (uint256)',
   'function canExit(uint256 _tokenId) view returns (bool)',
   'function feePercent() view returns (uint256)',
@@ -49,6 +52,10 @@ export const VEPEPPER_CURVE_ABI_HUMAN = [
   'function maxTime() view returns (uint256)',
 ] as const;
 
+export const VEPEPPER_CLOCK_ABI_HUMAN = [
+  'function epochPrevCheckpointElapsed() view returns (uint256)',
+] as const;
+
 export const VEPEPPER_VOTES_ADAPTER_ABI_HUMAN = [
   'function delegate(address _delegatee)',
   'function delegates(address _account) view returns (address)',
@@ -59,6 +66,7 @@ export const VEPEPPER_ESCROW_ABI = parseAbi(VEPEPPER_ESCROW_ABI_HUMAN);
 export const VEPEPPER_LOCK_NFT_ABI = parseAbi(VEPEPPER_LOCK_NFT_ABI_HUMAN);
 export const VEPEPPER_EXIT_QUEUE_ABI = parseAbi(VEPEPPER_EXIT_QUEUE_ABI_HUMAN);
 export const VEPEPPER_CURVE_ABI = parseAbi(VEPEPPER_CURVE_ABI_HUMAN);
+export const VEPEPPER_CLOCK_ABI = parseAbi(VEPEPPER_CLOCK_ABI_HUMAN);
 export const VEPEPPER_VOTES_ADAPTER_ABI = parseAbi(VEPEPPER_VOTES_ADAPTER_ABI_HUMAN);
 
 /** Exit fee percents are in basis points (500 = 5%) */

@@ -143,12 +143,13 @@ function LockRow({
       <View style={[styles.box, { borderColor: isConfirming ? THERMAL_COLORS.white : THERMAL_COLORS.border }]}>
         <View style={styles.between}>
           <Text style={[TYPE.label12, { color: INK.muted }]}>{`LOCK #${lock.tokenId}`}</Text>
-          <Text style={[TYPE.label12, { color: INK.muted }]}>{`SINCE ${formatShortDate(new Date(lock.start * 1000).toISOString()).toUpperCase()}`}</Text>
+          {/* lock.start is the weekly checkpoint the escrow dated the lock from, which can be days before the deposit */}
+          <Text style={[TYPE.label12, { color: INK.muted }]}>{`POWER FROM ${formatShortDate(new Date(lock.start * 1000).toISOString()).toUpperCase()}`}</Text>
         </View>
         <Text style={TYPE.display24}>{`${formatAmount(amount)} PEPPER`}</Text>
         <View style={styles.between}>
           <Text style={[TYPE.meta18, { color: THERMAL_COLORS.gold }]}>{`${formatAmount(power)} vePEPPER`}</Text>
-          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{`${multiplier.toFixed(1)}X`}</Text>
+          <Text style={[TYPE.meta18, { color: THERMAL_COLORS.cream }]}>{`${multiplier.toFixed(2)}X`}</Text>
         </View>
         <PixelBar colors={getHeatBarColors(maxLockAge > 0 ? age / maxLockAge : 1)} height={6} delay={100} />
         <Text style={[TYPE.label10, { color: INK.faint }]}>

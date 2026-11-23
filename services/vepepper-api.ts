@@ -14,6 +14,7 @@ import { VEPEPPER_CONTRACTS } from '@/config/aragon-governance';
 import { chiliz } from '@/config/chains';
 import { PEPPER_TOKEN_ADDRESS } from '@/config/pepper-token';
 import {
+  VEPEPPER_CLOCK_ABI,
   VEPEPPER_CURVE_ABI,
   VEPEPPER_ESCROW_ABI,
   VEPEPPER_ESCROW_ABI_HUMAN,
@@ -34,6 +35,7 @@ const ESCROW = VEPEPPER_CONTRACTS.escrow as Address;
 const LOCK_NFT = VEPEPPER_CONTRACTS.lockNFT as Address;
 const EXIT_QUEUE = VEPEPPER_CONTRACTS.exitQueue as Address;
 const CURVE = VEPEPPER_CONTRACTS.curve as Address;
+const CLOCK = VEPEPPER_CONTRACTS.clock as Address;
 const VOTES_ADAPTER = VEPEPPER_CONTRACTS.votesAdapter as Address;
 const PEPPER = PEPPER_TOKEN_ADDRESS as Address;
 
@@ -118,18 +120,28 @@ export async function readLockState(userAddress: string): Promise<VePepperLockSt
 }
 
 /**
- * Voting power a new lock of `amount` would have now and once fully aged
+ * Voting power a new lock of `amount` would have now and once fully aged.
+ *
+ * The escrow dates a new lock from the last weekly checkpoint, not from the
+ * deposit, so it starts with that many seconds of age: its power right
+ * after locking is getBias(elapsed), and it reaches the cap sooner.
  */
 export async function previewVotingPower(amount: bigint): Promise<VotingPowerPreview> {
-  const [atStart, atMax, maxTime] = await publicClient.multicall({
+  const [elapsed, atMax, maxTime] = await publicClient.multicall({
     allowFailure: false,
     contracts: [
-      { address: CURVE, abi: VEPEPPER_CURVE_ABI, functionName: 'getBias', args: [BigInt(0), amount] },
+      { address: CLOCK, abi: VEPEPPER_CLOCK_ABI, functionName: 'epochPrevCheckpointElapsed' },
       { address: CURVE, abi: VEPEPPER_CURVE_ABI, functionName: 'previewMaxBias', args: [amount] },
       { address: CURVE, abi: VEPEPPER_CURVE_ABI, functionName: 'maxTime' },
     ],
   });
-  return { atStart, atMax, maxTime: Number(maxTime) };
+  const atStart = await publicClient.readContract({
+    address: CURVE,
+    abi: VEPEPPER_CURVE_ABI,
+    functionName: 'getBias',
+    args: [elapsed, amount],
+  });
+  return { atStart, atMax, secondsToMax: Math.max(0, Number(maxTime) - Number(elapsed)) };
 }
 
 /**
@@ -394,10 +406,10 @@ export interface VePepperLockState {
 }
 
 export interface VotingPowerPreview {
-  /** Voting power right after locking */
+  /** Voting power right after locking (the lock already counts as a few days old) */
   atStart: bigint;
   /** Voting power once the lock has aged maxTime */
   atMax: bigint;
-  /** Seconds until atMax */
-  maxTime: number;
+  /** Seconds from now until atMax: maxTime minus the age the lock starts with */
+  secondsToMax: number;
 }
